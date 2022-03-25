@@ -46,8 +46,9 @@ def put(t):
 
 VERSION = 'VTech GLCX BusIO Client'
 
-#SERIAL_PORT = '/dev/ttyACM0'	# Due native
-SERIAL_PORT = '/dev/ttyACM1'	# Due native
+SERIAL_PORT = '/dev/ttyACM0'	# Due native
+#SERIAL_PORT = '/dev/ttyACM1'	# Due native
+
 #SERIAL_BAUD = 4000000	# Fuckyeah 4MBit on MEGA 2560. On DUE it is ignored (native USB speed)
 SERIAL_BAUD = 2000000
 #SERIAL_BAUD = 115200
@@ -453,13 +454,27 @@ class VTechGLCXBusIO:
 		self.send_command(b'd%08X%08X' % (addr, l))
 		
 		time.sleep(COMMAND_LATENCY)	# Important! Must wait for buffer to be filled
+		
 		for i in range(1+(l//16)+0):
 			time.sleep(LINE_LATENCY)
 			data = self.ser.readline()
 			if (len(data) == 0):
 				time.sleep(0.1)
 				data = self.ser.readline()
-			put(data.decode('ascii').strip())
+			t = data.decode('ascii').strip()
+			
+			# Extract printable characters
+			if ':' in t:
+				t += '\t'
+				hex = t[t.index(':')+1:].strip()
+				for i in range(len(hex)//2):
+					v = int(hex[i*2:i*2+2], 16)
+					if v < 0x20 or v >= 0x80:
+						t += '.'
+					else:
+						t += chr(v)
+			
+			put(t)
 		
 	def write(self, addr, data):
 		#self.pinmode_acquire_w()
@@ -941,9 +956,10 @@ def run_dump():
 	#vtbi.write(0x00001b8c, [ ord(c) for c in 'PYTHON42' ])
 	#vtbi.dump(0x00001b80, 0x20)
 	vtbi.pinmode_acquire_r()
-	vtbi.dump(0x00000000, 0x200)
+	#vtbi.dump(0x00000000, 0x200)
+	#vtbi.dump(0x00000000, 0x1000)
+	vtbi.dump(0x00000000, 0x20000)	# Englisch fuer Anfaenger
 	vtbi.pinmode_high_z()
-	#vtbi.dump(0x00000000, 0x20000)	# Englisch fuer Anfaenger
 	vtbi.stop()
 
 def run_write():
@@ -1015,6 +1031,7 @@ def run_write():
 
 if __name__ == '__main__':
 	#run_vis()
-	#run_dump()
-	run_write()
+	
+	run_dump()
+	#run_write()
 	#run_dump()

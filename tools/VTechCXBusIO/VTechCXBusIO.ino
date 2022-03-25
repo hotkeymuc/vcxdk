@@ -708,8 +708,12 @@ void loop() {
     sprintf(s, "%06X=%02X", addr, d);
     put(s);
     
+    //sprintf(s, "%06X%02X\n", addr, d);
+    //put_(s);
+    
     //delay(10);
   }
+  
 
   while (SERIAL_DEVICE.available()) {
     // get the new byte:

@@ -542,7 +542,7 @@ uint8_t read_data(uint32_t addr) {
   set_addr(addr);
   
   // Activate chip
-  set_nCS2_LOW;
+  //if (use_cs2) set_nCS2_LOW;
   set_nCE_LOW;
   
   delayMicroseconds(1); //@TODO: Set according to timing in data sheet of ROM/EPROM/EEPROM/SRAM
@@ -551,7 +551,7 @@ uint8_t read_data(uint32_t addr) {
   set_nOE_LOW;
 
   //delayNanoseconds(70);
-  delayMicroseconds(1);
+  //delayMicroseconds(1);
   
   // Now read what's on the bus
   
@@ -570,7 +570,7 @@ uint8_t read_data(uint32_t addr) {
   // De-activate chip
   set_nOE_HIGH;
   set_nCE_HIGH;
-  set_nCS2_HIGH;
+  //if (use_cs2) set_nCS2_HIGH;
   
   return d;
 }
@@ -582,7 +582,7 @@ uint8_t write_data(uint32_t addr, uint8_t d) {
   // Make sure we don't accidentally overwrite other stuff
   set_nCE_HIGH;
   set_nWR_HIGH;
-  set_nOE_HIGH; // OE state doesn't matter for WRITE sais KM68V1000 manual
+  set_nOE_HIGH; // OE state doesn't matter for WRITE says KM68V1000 manual
 
   delayMicroseconds(1);
   
@@ -593,7 +593,7 @@ uint8_t write_data(uint32_t addr, uint8_t d) {
   
   // Activate chip
   set_nCE_LOW;
-  set_nCS2_LOW;
+  //if (use_cs2) set_nCS2_LOW;
   
   //delayMicroseconds(1);
   
@@ -616,7 +616,7 @@ uint8_t write_data(uint32_t addr, uint8_t d) {
   
   // De-activate chip
   set_nCE_HIGH;
-  set_nCS2_HIGH;
+  //if (use_cs2) set_nCS2_HIGH;
 
   //delayMicroseconds(1);
   
@@ -645,6 +645,7 @@ void dump_rom(uint32_t addr_start, uint32_t len) {
       uint8_t v, v_old;
       v = read_data(a);
       do {
+        delayMicroseconds(1);
         v_old = v;
         v = read_data(a);
       } while(v != v_old);
@@ -763,6 +764,7 @@ void loop() {
         break;
       
       case 'w':
+        // Manual write
         addr = readHEX_32();
         d = readHEX_8();
         put_("# Writing 0x"); printHEX_8(d); put_(" to 0x"); printHEX_32(addr); put_(": ");
@@ -804,6 +806,14 @@ void loop() {
       
       case 'A':
         pinmode_acquire_w();
+        break;
+      
+      case 'c':
+        set_nCS2_LOW;
+        break;
+      
+      case 'C':
+        set_nCS2_HIGH;
         break;
         
       case 'z':

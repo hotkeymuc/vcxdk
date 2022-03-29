@@ -1,10 +1,12 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-
-
 """
-V-Tech GLCX BusIO Client
-(baed on old VTech Interceptor)
+
+V-Tech CX BusIO Client
+(based on the old VTech Interceptor)
+
+Communicates wo an Arduino running the VTechCXBusIO.ino sketch.
+This program can be used to visualize real-time bus activity, read ROMs and write to RAM cartridges.
 
 Keys:
 	SPACE	Start
@@ -21,13 +23,10 @@ Keys:
 	
 	
 
-Problem with MEGA 2560
-	Runs at 4MBit, but only gets up to ~1Mbit with constant loss of 5% due to wrong checksums
-
-Problem with DUE
-	Runs at native USB speed (480M) but effectively only sends slow.
-	Internet says: It depends how often you POLL the USB port.
-	So: For due we should not use serial.read too often!
+Problem with Arduino DUE:
+	Runs at native USB speed (480M) but may effectively run very slow...
+	Internet says: It depends on how often you *POLL* the USB port.
+	So: For DUE we should not call "serial.read" too often in order to gain maximum speed.
 
 """
 import serial
@@ -49,14 +48,14 @@ VERSION = 'VTech GLCX BusIO Client'
 SERIAL_PORT = '/dev/ttyACM0'	# Due native
 #SERIAL_PORT = '/dev/ttyACM1'	# Due native
 
-#SERIAL_BAUD = 4000000	# Fuckyeah 4MBit on MEGA 2560. On DUE it is ignored (native USB speed)
+#SERIAL_BAUD = 4000000	# F*** yeah 4MBit on MEGA 2560. On DUE this is ignored (uses native USB speed)
 SERIAL_BAUD = 2000000
 #SERIAL_BAUD = 115200
 
-COMMAND_LATENCY = 0.1
+COMMAND_LATENCY = 0.1	# Wait for the command to be processed before polling its result
 LINE_LATENCY = 0.001	# Throttle A LITTLE before polling a line
 
-DUMMY_ACTIVITY = not True	# Produce some random data to test
+DUMMY_ACTIVITY = not True	# Produce some random data to test the parser
 
 #MEMORY_SIZE = 0x080000	#0x100000	#0x200000	#0x40000	# CX: 2MB = 0x200000 = 2097152
 MEMORY_SIZE = 0x100000	#0x40000	# CX: 2MB = 0x200000 = 2097152
@@ -73,7 +72,7 @@ BANKS_Y = 2
 SCREEN_SIZE = (BANK_WIDTH*ZOOM*BANKS_X + PADDING*(1+BANKS_X), (BANK_HEIGHT + 1)*ZOOM*BANKS_Y + PADDING*(1+BANKS_Y))
 
 # Default start address
-ADDR_START = 0x0000
+ADDR_START = 0x000000
 
 #EDGE_FALLING = 0
 #EDGE_RISING = 1
@@ -438,6 +437,12 @@ class VTechGLCXBusIO:
 	def pinmode_acquire_w(self):
 		self.send_command(b'A')	# Acquire bus for writing, keeping nWE HIGH
 	
+	def set_ncs2_low(self):
+		self.send_command(b'c')	# Set the nCS2 line LOW
+	
+	def set_ncs2_high(self):
+		self.send_command(b'C')	# Set the nCS2 line HIGH
+	
 	def monitor_start(self):
 		# Start monitoring
 		#self.pinmode_acquire_r()
@@ -448,7 +453,7 @@ class VTechGLCXBusIO:
 		self.send_command(b's')
 		#self.pinmode_high_z()
 	
-	def dump(self, addr=0x00000000, l=0x100):
+	def dump(self, addr=0x00000000, l=0x100, beautify=True):
 		#self.pinmode_acquire_r()
 		
 		self.send_command(b'd%08X%08X' % (addr, l))
@@ -463,16 +468,20 @@ class VTechGLCXBusIO:
 				data = self.ser.readline()
 			t = data.decode('ascii').strip()
 			
-			# Extract printable characters
-			if ':' in t:
-				t += '\t'
-				hex = t[t.index(':')+1:].strip()
-				for i in range(len(hex)//2):
-					v = int(hex[i*2:i*2+2], 16)
-					if v < 0x20 or v >= 0x80:
-						t += '.'
-					else:
-						t += chr(v)
+			if beautify:
+				# Beautify / Extract printable characters
+				if ':' in t:
+					hex = t[t.index(':')+1:].strip()
+					t2 = t[:t.index(':')+1] + '\t'
+					t = ''
+					for i in range(len(hex)//2):
+						v = int(hex[i*2:i*2+2], 16)
+						t2 += '%02X ' % v
+						if v < 0x20 or v >= 0x80:
+							t += '.'
+						else:
+							t += chr(v)
+					t = t2 + '\t' + t
 			
 			put(t)
 		
@@ -947,7 +956,7 @@ def run_vis():
 	vtbi.stop()
 	put('Finished.')
 
-def run_dump():
+def run_dump(ofs=0, size=0x200, beautify=True):
 	vtbi = VTechGLCXBusIO()
 	vtbi.start()
 	
@@ -956,17 +965,23 @@ def run_dump():
 	#vtbi.write(0x00001b8c, [ ord(c) for c in 'PYTHON42' ])
 	#vtbi.dump(0x00001b80, 0x20)
 	vtbi.pinmode_acquire_r()
+	vtbi.set_ncs2_low()
+	
 	#vtbi.dump(0x00000000, 0x200)
 	#vtbi.dump(0x00000000, 0x1000)
-	vtbi.dump(0x00000000, 0x20000)	# Englisch fuer Anfaenger
+	#vtbi.dump(0x00000000, 0x20000)	# Englisch fuer Anfaenger
+	vtbi.dump(ofs, size, beautify=beautify)
+	
+	vtbi.set_ncs2_high()
 	vtbi.pinmode_high_z()
 	vtbi.stop()
 
 def run_write():
 	# Write contents
-	filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.dump.000-efa.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.dump.000-efa.bin'
 	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.dump.000-lmu.bin'
 	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Update_Programm-Zusatzkassette/CART_GLCX_Update_Programm-Zusatzkassette.dump.000-oneShort.bin'
+	filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.EFA.dedupe.bin'
 	with open(filename_bin, 'rb') as h:
 		data = h.read()
 	
@@ -983,6 +998,8 @@ def run_write():
 	#l = 0x200
 	
 	vtbi.pinmode_acquire_w()
+	vtbi.set_ncs2_low()
+	
 	time.sleep(0.1)
 	
 	o = 0
@@ -998,6 +1015,9 @@ def run_write():
 	
 	
 	#@FIXME: I have no idea why the first page gets overwritten with junk (always the identical junk)
+	# Does it happen during writing or afterwards?
+	# Might be due to my crappy wiring on the physical side...
+	
 	# Re-write first chunk
 	for i in range(2):
 		time.sleep(0.2)
@@ -1015,16 +1035,23 @@ def run_write():
 		put('%d bytes written.' % o)
 	
 	
-	vtbi.write(0xfffffff0, 0xff)	# Make adress point to an "unimportant" address
+	# Make the adress pins point to an "unimportant"/unused address...
+	vtbi.write(0xfffffff0, 0xff)
 	
+	# ...so we can manually set the WRITE line without corrupting any useful bytes
 	put('Set write protect now!')
 	
 	#vtbi.pinmode_acquire_w()
 	time.sleep(6)
 	
+	# Read back and see if we corrupted anything
 	vtbi.pinmode_acquire_r()
+	vtbi.set_ncs2_low()
+	
 	vtbi.dump(0x00000000, 0x200)
-	#vtbi.pinmode_high_z()
+	
+	vtbi.set_ncs2_high()
+	vtbi.pinmode_high_z()
 	
 	vtbi.stop()
 	
@@ -1032,6 +1059,9 @@ def run_write():
 if __name__ == '__main__':
 	#run_vis()
 	
-	run_dump()
-	#run_write()
 	#run_dump()
+	#run_dump(ofs=0x80000 - 0x2000, size=0x4000)
+	#run_dump(ofs=0x00000, size=0x200000, beautify=False)	# 2M = 2097152 = 0x200000
+	
+	run_write()
+	run_dump()

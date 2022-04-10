@@ -44,7 +44,7 @@ Port A:
   X PA11  TX1
   x PA12  RX2
   x PA13  TX2
-    PA14  D23
+    PA14  D23     nOE
     PA15  D24     nCE
     PA16  A0
   X PA17  SDA1
@@ -144,7 +144,8 @@ Port D:
 //#define set_nCE_LOW     REG_PIOA_ODSR &= ~(1 << 15)
 #define set_nCE_HIGH    REG_PIOA_SODR = (1 << 15)
 #define set_nCE_LOW     REG_PIOA_CODR = (1 << 15)
-
+#define get_nCE         (REG_PIOA_PDSR & (1 << 15))
+#define get_nCE_from_porta(a) (a & (1 << 15))
 
 #define PIN_nOE 23      //D23 = PA14
 //#define set_nOE_HIGH  digitalWrite(PIN_nOE, HIGH)
@@ -155,7 +156,8 @@ Port D:
 //#define set_nOE_LOW     REG_PIOA_ODSR &= ~(1 << 14)
 #define set_nOE_HIGH    REG_PIOA_SODR = (1 << 14)
 #define set_nOE_LOW     REG_PIOA_CODR = (1 << 14)
-
+#define get_nOE         (REG_PIOA_PDSR & (1 << 14))
+#define get_nOE_from_porta(a) (a & (1 << 14))
 
 #define PIN_nWR 5       //D5  = PC25
 //#define set_nWR_HIGH  digitalWrite(PIN_nWR, HIGH)
@@ -166,7 +168,8 @@ Port D:
 //#define set_nWR_LOW     REG_PIOC_ODSR &= ~(1 << 25)
 #define set_nWR_HIGH    REG_PIOC_SODR = (1 << 25)
 #define set_nWR_LOW     REG_PIOC_CODR = (1 << 25)
-
+#define get_nWR         (REG_PIOC_PDSR & (1 << 25))
+#define get_nWR_from_portc(c) (c & (1 << 25))
 
 #define PIN_nCS2 6      //D6  = PC24
 //#define set_nCS2_HIGH digitalWrite(PIN_nCS2, HIGH)
@@ -177,6 +180,8 @@ Port D:
 //#define set_nCS2_LOW    REG_PIOC_ODSR &= ~(1 << 24)
 #define set_nCS2_HIGH    REG_PIOC_SODR = (1 << 24)
 #define set_nCS2_LOW     REG_PIOC_CODR = (1 << 24)
+#define get_nCS2         (REG_PIOC_PDSR & (1 << 24))
+#define get_nCS2_from_portc(c) (c & (1 << 24))
 
 
 #define SERIAL_DEVICE SerialUSB // SerialUSB = Arduino Due "native"
@@ -185,6 +190,8 @@ Port D:
 
 #define put(s) SERIAL_DEVICE.println(s)
 #define put_(s) SERIAL_DEVICE.print(s)
+#define putB(d, l) SERIAL_DEVICE.write(d, l)
+
 
 #define NUM_ADDR 20 //17
 
@@ -428,6 +435,35 @@ void pinmode_acquire_w() {
   }
 }
 
+// Extract address value from port vale: PC1-PC9 to A0-A8, PC12-PC19 to A9-A16
+#define get_addr_from_portc(c) (\
+      ((c & 0b000000000000001111111110) >> 1)\
+    | ((c & 0b000011111111000000000000) >> 3)\
+    | ((c & 0b111000000000000000000000) >> 4)\
+)
+
+uint32_t get_addr() {
+  uint32_t a = 0L;
+
+  /*
+  // Naive reading (slow!)
+  uint8_t i;
+  for(i = 0; i < NUM_ADDR; i++) {
+    if (digitalRead(PIN_ADDR[i]) == HIGH)
+      a |= 1L << (uint32_t)i;
+  }
+  */
+  
+  // Bit shift magic
+  uint32_t p = REG_PIOC_PDSR; // Pin Data Status Regiser = current level on pin
+  //a = ((p >> 1) & 0x01ff) | (((p >> 12) & 0xff) << 9) | (((p >> 21) & 0x07) << 17);
+  a = ((p & 0b000000000000001111111110) >> 1)  // PC1-PC9 to A0-A8
+    | ((p & 0b000011111111000000000000) >> 3)  // PC12-PC19 to A9-A16
+    | ((p & 0b111000000000000000000000) >> 4)  // PC21-PC23 to A17-A19
+  ;
+  return a;
+}
+
 void set_addr(uint32_t a) {
   /*
   // Naive (slow!)
@@ -456,28 +492,9 @@ void set_addr(uint32_t a) {
   REG_PIOC_ODSR = p;
 }
 
-uint32_t get_addr() {
-  uint8_t i;
-  uint32_t a = 0L;
 
-  /*
-  // Naive reading (slow!)
-  for(i = 0; i < NUM_ADDR; i++) {
-    if (digitalRead(PIN_ADDR[i]) == HIGH)
-      a |= 1L << (uint32_t)i;
-  }
-  */
-  
-  // Bit shift magic
-  uint32_t p = REG_PIOC_PDSR; // Pin Data Status Regiser = current level on pin
-  //a = ((p >> 1) & 0x01ff) | (((p >> 12) & 0xff) << 9) | (((p >> 21) & 0x07) << 17);
-  a = ((p & 0b000000000000001111111110) >> 1)  // PC1-PC9 to A0-A8
-    | ((p & 0b000011111111000000000000) >> 3)  // PC12-PC19 to A9-A16
-    | ((p & 0b111000000000000000000000) >> 4)  // PC21-PC23 to A17-A19
-  ;
-  return a;
-}
-
+// Extract data from port value: D0-D3 from PD0-PD3, D4-D7 from PD6-PD9
+#define get_data_from_portd(d) ((d & 0x0fL) | ((d >> 2) & 0xf0))
 
 uint8_t get_data() {
   // Just read data off the bus (without OE)
@@ -558,6 +575,7 @@ uint8_t read_data(uint32_t addr) {
   // Simply read
   d = get_data();
 
+  /*
   // Read until settled
   uint8_t d_old;
   do {
@@ -565,7 +583,7 @@ uint8_t read_data(uint32_t addr) {
     d_old = d;
     d = get_data();
   } while(d != d_old);
-
+  */
   
   // De-activate chip
   set_nOE_HIGH;
@@ -574,7 +592,6 @@ uint8_t read_data(uint32_t addr) {
   
   return d;
 }
-
 
 uint8_t write_data(uint32_t addr, uint8_t d) {
   // Perform a whole write cycle
@@ -638,17 +655,20 @@ void dump_rom(uint32_t addr_start, uint32_t len) {
     put_(s);
 
     for(i = 0; i < 16; i++) {
+      uint8_t v;
+      
       // Simple
-      //v = read_data(a);
-
+      v = read_data(a);
+      /*
       // Re-read until two consecutive reads yield the same
-      uint8_t v, v_old;
+      uint8_t v_old;
       v = read_data(a);
       do {
         delayMicroseconds(1);
         v_old = v;
         v = read_data(a);
       } while(v != v_old);
+      */
       sprintf(s, "%02X", v);
       put_(s);
 
@@ -660,8 +680,76 @@ void dump_rom(uint32_t addr_start, uint32_t len) {
   
 }
 
-bool is_monitoring;
+
+
 uint32_t current_address;
+bool is_monitoring;
+
+bool is_int_active;
+int int_pin;
+
+// Single sample
+//volatile uint32_t int_addr;
+//volatile uint8_t int_data;
+//volatile bool int_triggered;
+
+// Ring buffer
+
+typedef struct {
+  uint32_t addr;
+  uint8_t data;
+  uint8_t flags;
+  
+  // Pad to alignment?
+  uint8_t dummy0;
+  uint8_t dummy1;
+} t_bus_sample;
+
+#define BUS_RING_BUF_SIZE 240
+volatile t_bus_sample bus_ring_buf[BUS_RING_BUF_SIZE];
+volatile uint8_t bus_index_in;
+uint8_t bus_index_out;
+
+
+void handle_int() {
+  //if (int_triggered) return;
+
+  /*
+  // Single sample
+  int_addr = get_addr();
+  int_data = get_data();
+  int_triggered = true;
+  */
+
+  // Ring buffer
+  /*
+  // Simple
+  uint32_t addr = get_addr();
+  uint8_t data = get_data();
+  uint8_t flags = ((get_nOE != 0) ? 1 : 0) | ((get_nWR != 0) ? 2 : 0);
+  */
+
+  // Quicker (read all ports once at the beginning)
+  uint32_t portc = REG_PIOC_PDSR;
+  uint32_t porta = REG_PIOA_PDSR;
+  uint32_t portd = REG_PIOD_PDSR;
+  
+  // Decode later
+  uint32_t addr = get_addr_from_portc(portc);
+  uint8_t data = get_data_from_portd(portd);
+  uint8_t flags =
+      ((get_nOE_from_porta(porta) != 0) ? 1 : 0)
+    | ((get_nWR_from_portc(portc) != 0) ? 2 : 0)
+    | ((get_nCE_from_porta(porta) != 0) ? 4 : 0)
+    | ((get_nCS2_from_portc(portc) != 0) ? 8 : 0)
+  ;
+  
+  bus_ring_buf[bus_index_in].addr = addr;
+  bus_ring_buf[bus_index_in].data = data;
+  bus_ring_buf[bus_index_in].flags = flags;
+  bus_index_in = (bus_index_in + 1) % BUS_RING_BUF_SIZE;
+}
+
 void setup() {
   uint8_t i;
   
@@ -688,7 +776,14 @@ void setup() {
   
   // Leave the bus alone
   pinmode_hi_z();
+  
   is_monitoring = false;
+  
+  is_int_active = false;
+  //int_triggered = false;
+  bus_index_in = 0;
+  bus_index_out = 0;
+  
   current_address = 0x0000;
 }
 
@@ -703,6 +798,9 @@ void loop() {
   
   if (is_monitoring) {
     // Read bus without interfering
+
+    /*
+    // Simple / Text
     addr = get_addr();
     d = get_data();
     
@@ -711,8 +809,43 @@ void loop() {
     
     //sprintf(s, "%06X%02X\n", addr, d);
     //put_(s);
+    */
+    
+    // Force int and return result immediately (binary)
+    l = bus_index_in;
+    handle_int();
+    putB((char *)&bus_ring_buf[l], (4+1+1));
+    
     
     //delay(10);
+  }
+  
+  if (is_int_active) {
+    /*
+    while (int_triggered) {
+      sprintf(s, "%06X=%02X", int_addr, int_data);
+      int_triggered = false;
+      
+      put(s);
+    }
+    */
+
+    delay(1); // Some time to let ints happen?
+    
+    // Write out everything in buffer
+    //disableInterrupt();
+    while (bus_index_out != bus_index_in) {
+      // Text
+      //sprintf(s, "%06X=%02X", bus_ring_buf[bus_index_out].addr, bus_ring_buf[bus_index_out].data);
+      //sprintf(s, "%06X%01X%02X", bus_ring_buf[bus_index_out].addr, bus_ring_buf[bus_index_out].flags, bus_ring_buf[bus_index_out].data);
+      //put(s);
+
+      // Binary
+      putB((char *)&bus_ring_buf[bus_index_out], (4+1+1));
+      
+      bus_index_out = (bus_index_out + 1) % BUS_RING_BUF_SIZE;
+    }
+    //enableInterrupt();
   }
   
 
@@ -845,12 +978,68 @@ void loop() {
         break;
 
       case 'M':
+        switch(readByte()) {
+          case 'c':
+          case 'C':
+            int_pin = PIN_nCE;
+            break;
+            
+          case '2':
+            int_pin = PIN_nCS2;
+            break;
+          
+          case 'o':
+          case 'O':
+            int_pin = PIN_nOE;
+            break;
+          
+          case 'w':
+          case 'W':
+            int_pin = PIN_nWR;
+            break;
+        }
+        
+                
+        //int_triggered = false;
+        //int_addr = 0;
+        //int_data = 0;
+        bus_index_in = 0;
+        bus_index_out = 0;
+        is_int_active = true;
+
+        //put("# Started monitor_int");
+        switch(readByte()) {
+          case 'r':
+          case 'R':
+            attachInterrupt(digitalPinToInterrupt(int_pin), handle_int, RISING);
+            break;
+          case 'f':
+          case 'F':
+            attachInterrupt(digitalPinToInterrupt(int_pin), handle_int, FALLING);
+            break;
+          case 'c':
+          case 'C':
+            attachInterrupt(digitalPinToInterrupt(int_pin), handle_int, CHANGE);
+            break;
+
+        }
+        
+        break;
+
+        
       case 's':
       case 'q':
+        if (is_int_active) {
+          detachInterrupt(digitalPinToInterrupt(int_pin));
+          is_int_active = false;
+        }
+        
         //pinmode_hi_z();
         is_monitoring = false;
         break;
-
+      
+      default:
+        put("# ?");
     }
   }
 }

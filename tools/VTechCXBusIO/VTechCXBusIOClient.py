@@ -84,9 +84,10 @@ LOW = 0
 
 
 # Binary protocol
-BUFFER_SIZE = 8192
-BUFFER_SIZE_MIN_FLUSH = 2048
-PACKET_SIZE = 6	# addr_hi, addr_lo, data, flags_hi, flags_lo, checksum
+global BUFFER_SIZE_MIN_FLUSH
+BUFFER_SIZE = 8192	# Maximum to read at once
+BUFFER_SIZE_MIN_FLUSH = 2048	# Start reading after ... bytes
+PACKET_SIZE = 6	# addr_hi, addr_lo, data, flags_hi, flags_lo, checksum (GL) -OR- addr32 flags8 data8 (GLCX)
 
 # HEX protocol:Traffic: 61138 Bps	6213 steps
 
@@ -151,7 +152,7 @@ def to_hexdump(data, ofs=0, count=0x100, addr_ofs=0):
 		while (x < width) and (o2 < e):
 			if (x > 0) and (x % col) == 0: r += ' '
 			v = data[o2]
-			if (v < 32) or (v > 127):
+			if (v < 32) or (v >= 127):
 				c = '.'
 			else:
 				c = chr(v)
@@ -228,16 +229,19 @@ class VTechGLCXBusIO:
 		for i in range(3):
 			time.sleep(0.1)
 			data = self.ser.readline()
+			put(str(data))
 		
 	
 	def handle_line(self, l):
 		# Parse simple HEX line "xxxxxx=xx"
-		if len(l) != (6+1+2):
+		#if len(l) != (6+1+2):
+		if len(l) < (6+1+2):
 			put('Unhandled: "%s"' % str(l))
 			return
 		a = int(l[0:6], 16)
 		d = int(l[7:9], 16)
-		self.handle_bus(a, d, None)
+		f = int(l[6], 16)
+		self.handle_bus(a, d, f)
 	
 	def handle_bus(self, bus_addr, bus_data, bus_flags):
 		#put('%s = %06X	%s = %02X' % (to_bin(bus_addr, 16), bus_addr, to_bin(bus_data, 8), bus_data))
@@ -329,14 +333,32 @@ class VTechGLCXBusIO:
 				# Reset proto
 				t = ''
 			
-			lines = t.split('\r\n')
+			#lines = t.split('\r\n')	# This is OK for Arduino println
+			lines = t.split('\n')
 			self.line_old = lines.pop()	# Keep residue for next time
 			for line in lines:
+				#put('<<< %s' % line)
 				self.handle_line(line)
 			
 			
+	def update_mon(self, count=5):
+		"""Check for new binary packets and parse them"""
+		
+		for rep in range(count):
+			l = self.ser.inWaiting()
+			#put('Waiting: %d bytes...' % l)
+			
+			if (l < PACKET_SIZE): continue
+			d = self.ser.read((l // PACKET_SIZE) * PACKET_SIZE)
+			while len(d) >= PACKET_SIZE:
+				addr = d[0]*0x00000001 + d[1]*0x00000100 + d[2]*0x00010000 + d[3]*0x01000000
+				data = d[4]
+				flags = d[5]
+				self.handle_bus(addr, data, flags)
+				d = d[PACKET_SIZE:]	# Continue with rest
+			
 			"""
-			### Binary protocol
+			### Old (GL) binary protocol
 			if self.buf_waiting > BUFFER_SIZE-4:
 				put('Input buffer overflow!')
 			else:
@@ -416,6 +438,7 @@ class VTechGLCXBusIO:
 			
 			"""
 		# End of outer repeater loop
+		
 	
 	def stop(self):
 		
@@ -444,11 +467,25 @@ class VTechGLCXBusIO:
 		self.send_command(b'C')	# Set the nCS2 line HIGH
 	
 	def monitor_start(self):
-		# Start monitoring
+		"""Start monitoring raw bus activity"""
 		#self.pinmode_acquire_r()
-		self.pinmode_high_z()
+		#self.pinmode_high_z()
 		self.send_command(b'm')
+	
+	def monitor_start_int(self, pin, edge):
+		"""Start monitoring on interrupt.
+			Pin:
+				c=nCE, 2=nCS2, o=nOE, w=nWE
+				
+			Edge:
+				R=RISING, F=FALLING, C=CHANGE
+		"""
+		#self.pinmode_acquire_r()
+		#self.pinmode_high_z()
+		self.send_command(b'M' + bytes(pin, 'ascii') + bytes(edge, 'ascii'))
+	
 	def monitor_stop(self):
+		# Stop monitoring, remove interrupt
 		#self.send_command(b'M')
 		self.send_command(b's')
 		#self.pinmode_high_z()
@@ -509,7 +546,7 @@ class VTechGLCXBusIO:
 
 
 class VTechVis:
-	"The virtual representation of the VTech Genius Leader computer"
+	"The visual representation of the VTech Genius Leader computer"
 	
 	def __init__(self, name='main', addr_offset=0, mem_size=BANK_SIZE, pos=(PADDING, PADDING), width=BANK_WIDTH):
 		self.name = name
@@ -674,6 +711,7 @@ def run_vis():
 		screen.blit(img, rect)
 		return img
 	
+	# Create multiple visualizations
 	vtvs = [
 		VTechVis(name='M0', addr_offset=0x000000, mem_size=BANK_SIZE),
 		VTechVis(name='M1', addr_offset=BANK_SIZE, mem_size=BANK_SIZE)
@@ -716,7 +754,9 @@ def run_vis():
 	if DUMMY_ACTIVITY:
 		pass
 	else:
+		vtbi.pinmode_high_z()
 		vtbi.monitor_start()
+		#vtbi.monitor_start_int()
 	
 	key_retrig = 0
 	traffic_display = False
@@ -735,10 +775,11 @@ def run_vis():
 			# Test
 			addr = random.randint(0, MEMORY_SIZE * 2)
 			data = random.randint(0, 255)
-			vtbi_onbus(addr, data, None)
+			vtbi_onbus(addr, data, 0xff)
 		else:
 			#vtbi.update(count=100 if vtbi.running else 1)
-			vtbi.update(2)	# Due wants to send bulk, so do not poll it to often
+			#vtbi.update(2)	# Due wants to send bulk, so do not poll it to often
+			vtbi.update_mon(2)	# Due wants to send bulk, so do not poll it to often
 		
 		
 		# Maybe update from time to time?
@@ -808,7 +849,14 @@ def run_vis():
 					
 					elif (event.key == ord('m')):
 						# Start monitoring
-						vtbi.send_command(b'm')
+						
+						# First: Stop any other monitoring
+						vtbi.send_command(b's')
+						
+						# Start monitoring
+						#vtbi.send_command(b'm')	# Raw
+						vtbi.monitor_start()	# Raw
+						#vtbi.monitor_start_int('c', 'R')	# only on int
 					
 					elif (event.key == ord('t')):
 						traffic_display = not traffic_display
@@ -956,7 +1004,7 @@ def run_vis():
 	vtbi.stop()
 	put('Finished.')
 
-def run_dump(ofs=0, size=0x200, beautify=True):
+def run_dump(ofs=0, size=0x200, beautify=True, ncs2=True):
 	vtbi = VTechGLCXBusIO()
 	vtbi.start()
 	
@@ -965,53 +1013,67 @@ def run_dump(ofs=0, size=0x200, beautify=True):
 	#vtbi.write(0x00001b8c, [ ord(c) for c in 'PYTHON42' ])
 	#vtbi.dump(0x00001b80, 0x20)
 	vtbi.pinmode_acquire_r()
-	vtbi.set_ncs2_low()
+	if ncs2:
+		vtbi.set_ncs2_low()
 	
-	#vtbi.dump(0x00000000, 0x200)
-	#vtbi.dump(0x00000000, 0x1000)
-	#vtbi.dump(0x00000000, 0x20000)	# Englisch fuer Anfaenger
 	vtbi.dump(ofs, size, beautify=beautify)
 	
-	vtbi.set_ncs2_high()
+	if ncs2:
+		vtbi.set_ncs2_high()
+	
 	vtbi.pinmode_high_z()
+	
 	vtbi.stop()
 
-def run_write():
+def run_write(src_ofs=0, dst_addr=0, size=None, ncs2=True):
 	# Write contents
 	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.dump.000-efa.bin'
 	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.dump.000-lmu.bin'
 	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Update_Programm-Zusatzkassette/CART_GLCX_Update_Programm-Zusatzkassette.dump.000-oneShort.bin'
-	filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.EFA.dedupe.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.EFA.dedupe.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.LMU.dedupe.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Nuova_Cartuccia_E-mail/GLCX_Nuova_Cartuccia_E-mail.dump.004.hex.bin'
+	filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_E-Mail-Starter1.5/CART_GLCX_E-Mail-Starter-Version1.5.dump.000-512KB-used.hex.bin'
+	
+	
 	with open(filename_bin, 'rb') as h:
 		data = h.read()
 	
 	l = len(data)
 	put('Data size: %d bytes = 0x%08X' % (l, l))
 	
+	if size is None: size = l
+	if size > l: size = l
+	
 	vtbi = VTechGLCXBusIO()
 	vtbi.start()
 	
 	chunk_size = 32
-	addr = 0x00000000
 	
 	# Limit max size
 	#l = 0x200
 	
 	vtbi.pinmode_acquire_w()
-	vtbi.set_ncs2_low()
+	
+	if ncs2:
+		vtbi.set_ncs2_low()
 	
 	time.sleep(0.1)
 	
-	o = 0
-	while(o < l):
-		d2 = data[o:o+chunk_size]
+	src_o = src_ofs
+	dst_o = dst_addr
+	n = 0
+	while(n < size):
+		d2 = data[src_o:src_o+chunk_size]
 		l2 = len(d2)
-		put('Chunk: addr=0x%08X len=%d' % (addr, l2))
-		vtbi.write(addr, [ c for c in d2 ])
+		put('Chunk: addr=0x%08X len=%d (%.2f%%)' % (dst_o, l2, n*100.0/size))
+		vtbi.write(dst_o, [ c for c in d2 ])
 		
-		addr += l2
-		o += l2
-	put('%d bytes written.' % o)
+		src_o += l2
+		dst_o += l2
+		n += l2
+	put('%d bytes written.' % n)
+	
 	
 	
 	#@FIXME: I have no idea why the first page gets overwritten with junk (always the identical junk)
@@ -1035,33 +1097,88 @@ def run_write():
 		put('%d bytes written.' % o)
 	
 	
+	if ncs2:
+		vtbi.set_ncs2_high()
+	
+	
 	# Make the adress pins point to an "unimportant"/unused address...
-	vtbi.write(0xfffffff0, 0xff)
+	vtbi.write(0xfffffff0, [ 0xff ])
 	
 	# ...so we can manually set the WRITE line without corrupting any useful bytes
 	put('Set write protect now!')
 	
 	#vtbi.pinmode_acquire_w()
-	time.sleep(6)
+	time.sleep(4)
 	
 	# Read back and see if we corrupted anything
 	vtbi.pinmode_acquire_r()
-	vtbi.set_ncs2_low()
 	
-	vtbi.dump(0x00000000, 0x200)
+	if ncs2:
+		vtbi.set_ncs2_low()
 	
-	vtbi.set_ncs2_high()
+	vtbi.dump(0x00000000, 0x400)
+	
+	if ncs2:
+		vtbi.set_ncs2_high()
+	
 	vtbi.pinmode_high_z()
 	
 	vtbi.stop()
 	
 
+
+def run_mon():
+	#global BUFFER_SIZE_MIN_FLUSH
+	#BUFFER_SIZE_MIN_FLUSH = (6+1+2+1)	# Show all
+	
+	vtbi = VTechGLCXBusIO()
+	
+	def vtbi_mon_onbus(addr, data, flags):
+		#put('Addr: %06X = %02X' % (addr, data))
+		# Beware! Flags contains the LEVEL, so "1 = nOE is HIGH, 2 = nWR is HIGH"
+		#put('Addr: %06X %s %02X' % (addr, ('R' if ((flags&3)==2) else 'W' if ((flags&3)==1) else 'X'), data))
+		#put('Addr: %06X %01X %02X' % (addr, flags, data))
+		flags_str = '%s%s%s%s' % (
+			'.' if ((flags & 1) > 0) else 'r',
+			'.' if ((flags & 2) > 0) else 'w',
+			'.' if ((flags & 4) > 0) else 'c',
+			'.' if ((flags & 8) > 0) else '2',
+		)
+		put('Addr: %06X %01X=%s %02X' % (addr, flags, flags_str, data))
+	
+	vtbi.on_bus = vtbi_mon_onbus
+	
+	vtbi.start()
+	
+	vtbi.monitor_stop()
+	time.sleep(.1)
+	vtbi.pinmode_high_z()
+	time.sleep(.1)
+	
+	#vtbi.monitor_start()
+	
+	# Pin: c=nCE, 2=nCS2, o=nOE, w=nWE
+	# Edge: R=RISING, F=FALLING, C=CHANGE
+	#vtbi.monitor_start_int('2', 'F')
+	vtbi.monitor_start_int('o', 'F')	# Triggers when sound is playing for some reason...
+	#vtbi.monitor_start_int('c', 'C')
+	#vtbi.monitor_start_int('w', 'C')	# Active all the time
+	
+	time.sleep(.1)
+	while True:
+		vtbi.update_mon()
+		
+		time.sleep(.01)
+
 if __name__ == '__main__':
-	#run_vis()
+	#run_mon()
+	run_vis()
 	
 	#run_dump()
 	#run_dump(ofs=0x80000 - 0x2000, size=0x4000)
 	#run_dump(ofs=0x00000, size=0x200000, beautify=False)	# 2M = 2097152 = 0x200000
 	
-	run_write()
-	run_dump()
+	#run_write(size=1024*64)
+	
+	#run_write(src_ofs=0, dst_addr=0, size=1024*128)
+	#run_dump(size=0x800)

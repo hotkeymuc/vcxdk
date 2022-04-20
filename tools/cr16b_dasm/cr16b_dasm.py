@@ -12,7 +12,7 @@ Check against MAME:
 	mame -debug -rompath /z/apps/_emu/_roms gl8008cx
 
 BUG:
-	* "ashuw" löst nicht korrekt auf: Parameter sollte -15..15 sein, nicht "$65521"
+	* "ashuw" does not resolve correctly: Should result in -15..15, not "$65521"
 
 
 2022-02-23 Bernhard "HotKey" Slawik
@@ -212,11 +212,12 @@ class Stream:
 
 class DataBuffer:
 	"""Analogon to cr16b_disassembler::data_buffer"""
-	def __init__(self, data):
+	def __init__(self, data, addr_offset=0x0000):
 		self.data = data
+		self.addr_offset = addr_offset
 		#self.ofs = 0
 	def r8(self, ofs):
-		r = self.data[ofs]	#self.ofs]
+		r = self.data[ofs - self.addr_offset]	#self.ofs]
 		#self.ofs += 1
 		return r
 		
@@ -1155,8 +1156,8 @@ if __name__ == '__main__':
 	SHOW_BYTES = True
 	SHOW_WORDS = True
 	SHOW_ASM = True
-	ADDRESS_START = 0x000000
-	ADDRESS_STOP = ADDRESS_START + 0x000200
+	ADDRESS_START = 0x040000
+	ADDRESS_STOP = ADDRESS_START + 0x010000
 	
 	import sys
 	#put('argv=' + str(sys.argv))
@@ -1166,9 +1167,12 @@ if __name__ == '__main__':
 		#ROM_FILENAME = 'ROM_GL5005X_27-6426-00.u1'
 		#ROM_FILENAME = 'ROM_GBrainStation_5505X_27-7006-00.u5'
 		#ROM_FILENAME = 'ROM_GL6600CX_54-06400-00.u1'
-		
-		ROM_FILENAME = 'ROM_GL8008CX_27-6393-11.u1'
+		#ROM_FILENAME = 'ROM_GL8008CX_27-6393-11.u1'
+		#ROM_FILENAME = 'CART_GL8008CX_Update.dump.000.seg0-64KB__4KB_used.bin'
+		ROM_FILENAME = 'CART_GL8008CX_Update.dump.000.seg1-64KB__4KB_used.bin'
 		ADDRESS_START = 0x0
+		#ADDRESS_START = 0x00b000
+		#ADDRESS_START = 0x80000
 		#ADDRESS_START = 0x180300	# Sys calls?
 		#ADDRESS_STOP = 0x180600
 		
@@ -1193,7 +1197,9 @@ if __name__ == '__main__':
 		#ADDRESS_START = 0xa67a0	# XX Usage of "Zusatzkassette fehlt" (9dd7) used at a67b4
 		#ADDRESS_START = 0x18a722	# XX Usage of "Zusatzkassette fehlt" (9dd7)
 		#ADDRESS_START = 0x1DEE2 - 0x40
-		ADDRESS_STOP = ADDRESS_START + 0x40000	#0x200
+		#ADDRESS_STOP = ADDRESS_START + 0x40000	#0x200
+		ADDRESS_STOP = ADDRESS_START + 0x01000
+		#ADDRESS_STOP = ADDRESS_START + 0xA80
 		
 		# PC-Link:
 		#ADDRESS_START = 0x16b10 - 0x200	# Usage of all error strings (e.g. 3 PC-Link strings at ~0x16b00 (A096="PC-Link wird aufgebaut", A0B1="PC-Link nicht moeglich", A0C8="Aufbau-Fehler", A0D6="Verbindungsfehler"))
@@ -1259,7 +1265,7 @@ if __name__ == '__main__':
 					
 					00062E:	51 38 C8 00	3851 00C8	movw    $0x00C8, r2
 					000632:	B6 77 13 FE	77B6 FE13	bal     (ra,era), 0x180444
-
+		
 		"""
 		
 		#ROM_FILENAME = 'test_in.hex'

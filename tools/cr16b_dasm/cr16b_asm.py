@@ -34,13 +34,18 @@ class DataStore:
 	def get_bytes(self):
 		return bytes(self.data)
 
+I_BYTE = 0
+I_WORD = 1
+
+OP_ADD = 0b0001
+OP_CMP = 0b0111
 
 class CR16B_Assembler:
 	def __init__(self):
 		self.stor = DataStore()
 		self.pc = 0x0000
 	
-	def w(self, v):
+	def w_raw(self, v):
 		if type(v) is list:
 			for w in v:
 				self.stor.w8(w)
@@ -60,8 +65,128 @@ class CR16B_Assembler:
 	def dump(self):
 		put(' '.join(['%02X'%b for b in self.stor.get_data()]))
 	
+	
+	def assemble_basic_reg_reg(self, op, i, src_reg, dest_reg):
+		
+		# 01 at 15..14
+		# i at 13
+		# op at 12..9
+		instr16 = \
+			  (0b01 << 14)\
+			| (i << 13)\
+			| (op << 9)\
+			| (dest_reg << 5)\
+			| (src_reg << 1)\
+			| 1
+		
+		# [ (instr & 0x000000ff), ((instr & 0x0000ff00) >> 8) ]
+		self.w16(instr16)
+	
+	# basic_short_imm_reg
+	def assemble_basic_imm_reg_short(self, op, i, imm5, dest_reg):
+		self.w16(
+			  (0b00 << 14)\
+			| (i << 13)\
+			| (op << 9)\
+			| (dest_reg << 5)\
+			| imm5
+		)
+	
+	# basic_medium_imm_reg
+	def assemble_basic_imm_reg_medium(self, op, i, imm16, dest_reg):
+		self.w32(
+			  (imm16 << 16)\
+			| (0b00 << 14)\
+			| (i << 13)\
+			| (op << 9)\
+			| (dest_reg << 5)\
+			| 0b10001
+		)
+	
+	def assemble_movw(self, imm16, dest_reg):
+		self.assemble_basic_imm_reg_medium(op=0b1100, i=1, imm16=imm16, dest_reg=dest_reg)
+	
+	# beq0/1i
+	# bne0/1i
+	
+	def assemble_movd(self, imm21, dest_pair):
+		"""
+			dest_pair: index of the lower reg (e.g. 0 for r1,r0)
+				0b0000 = r1,r0
+				0b0001 = r2,r1
+				0b0010 = r3,r2
+				0b0011 = r4,r3
+				0b0100 = r5,r4
+		"""
+		instr32 = \
+			  ((imm21 & 0b000001111111111111111) << 16)\
+			| (0b011001 << 10)\
+			| (((imm21 & 0b100000000000000000000) >> 20) << 9)\
+			| (dest_pair << 5)\
+			| (((imm21 & 0b000010000000000000000) >> 16) << 4)\
+			| (((imm21 & 0b011100000000000000000) >> 17) << 1)
+		
+		#[ (instr & 0x000000ff), ((instr & 0x0000ff00) >> 8), ((instr & 0x00ff0000) >> 16), ((instr & 0xff000000) >> 24) ]
+		self.w32(instr32)
+	
+	
+	def assemble_special(self, op, p1=0, p2=0):
+		"""
+		DI, EI, EXCP, LPR, MOVXB, MOVZB, RETX
+		Scond, SPR, EIWAIT, MULSW, MULUW, MULSB, PUSH, POPrt, LOADM, STORM, WAIT
+		"""
+		self.w16(
+			  (0b011 << 13)\
+			| (op << 9)\
+			| (p1 << 5)\
+			| (p2 << 1)
+		)
+	
+	def assemble_push(self, reg, count=1):
+		self.assemble_special(op=0b0110, p1=count -1, p2=reg)
+	
+	# LOADi, STORi
+	
+	def assemble_br(self, disp, cond=0):
+		"""
+			cond:
+				1=NE
+		"""
+		if (disp < 0b1000000000):
+			self.assemble_br_short(disp=disp, cond=cond)
+		else:
+			self.assemble_br_medium(disp=disp, cond=cond)
+	
+	
+	def assemble_br_short(self, disp, cond=0):
+		
+		if (disp >= 0b1000000000): raise ValueError('displacement too big for short br')
+		
+		self.w16(
+			  (0b010 << 13)\
+			| (((disp & 0b111100000) >> 5) << 9)\
+			| (cond << 5)\
+			| ((disp & 0b000011111))
+		)
+	
+	def assemble_br_medium(self, disp, cond=0):
+		# Medium, Large Memory Model
+		self.w32(
+			  (((disp & 0b000001111111111111110) >> 1) << 17)\
+			| (((disp & 0b100000000000000000000) >> 20) << 16)\
+			| (0b0111010 << 9)\
+			| (cond << 5)\
+			| (((disp & 0b000010000000000000000) >> 16) << 4)\
+			| (((disp & 0b011100000000000000000) >> 17) << 1)
+		)
+	
+	def assemble_bne(self, disp):
+		#self.w16(0x4020 + disp)
+		self.assemble_br(cond=1, disp=disp)
+		
+	
 	def assemble_bal(self, dest, lnk_pair=13, pc=None):
-		"""lnk_pair: 13 = 0b1101 = ra,era"""
+		"""lnk_pair: 0=r1,r0, 1=r2,r1, ... 13 = 0b1101 = ra,era (R13), 14=RA, 15=SP"""
 		
 		if pc is None:
 			pc = self.pc
@@ -87,62 +212,11 @@ class CR16B_Assembler:
 		#[ (instr & 0x000000ff), ((instr & 0x0000ff00) >> 8), ((instr & 0x00ff0000) >> 16), ((instr & 0xff000000) >> 24) ]
 		self.w32(instr32)
 	
-	def assemble_movd(self, imm21, dest_pair):
-		"""
-			dest_pair: index of the lower reg (e.g. 0 for r1,r0)
-				0b0000 = r1,r0
-				0b0001 = r2,r1
-				0b0010 = r3,r2
-				0b0011 = r4,r3
-				0b0100 = r5,r4
-		"""
-		instr32 = \
-			  ((imm21 & 0b000001111111111111111) << 16)\
-			| (0b011001 << 10)\
-			| (((imm21 & 0b100000000000000000000) >> 20) << 9)\
-			| (dest_pair << 5)\
-			| (((imm21 & 0b000010000000000000000) >> 16) << 4)\
-			| (((imm21 & 0b011100000000000000000) >> 17) << 1)
-		
-		#[ (instr & 0x000000ff), ((instr & 0x0000ff00) >> 8), ((instr & 0x00ff0000) >> 16), ((instr & 0xff000000) >> 24) ]
-		self.w32(instr32)
+	# JMP
+	# JAL
 	
-	def assemble_br(self, disp, cond=0):
-		"""cond: 1=NE"""
-		
-		if (disp >= 0b1000000000):
-			raise ValueError('displacement too big for short br')
-		
-		self.w16(
-			  (0b010 << 13)\
-			| (((disp & 0b111100000) >> 5) << 9)\
-			| (cond << 5)\
-			| ((disp & 0b000011111))
-		)
-		
-	def assemble_bne(self, disp):
-		#self.w16(0x4020 + disp)
-		self.assemble_br(cond=1, disp=disp)
-		
+	# Bit manipulation
 	
-	def assemble_basic_reg_reg(self, i, op, src_reg, dest_reg):
-		
-		# 01 at 15..14
-		# i at 13
-		# op at 12..9
-		instr16 = \
-			  (0b01 << 14)\
-			| (i << 13)\
-			| (op << 9)\
-			| (dest_reg << 5)\
-			| (src_reg << 1)\
-			| 1
-		
-		# [ (instr & 0x000000ff), ((instr & 0x0000ff00) >> 8) ]
-		self.w16(instr16)
-	
-
-
 
 if __name__ == '__main__':
 	
@@ -174,16 +248,14 @@ if __name__ == '__main__':
 	
 	asm.pc = 0x200
 	
-	asm.w([0xf1, 0x39, 0x00, 0xb7])	# movw    $0xB700, sp
-	asm.w([0x20, 0x6c])	# push    $2, r0
-	
+	asm.assemble_movw(0xb700, 15)	# movw    $0xB700, sp
+	asm.assemble_push(reg=0, count=2)	# push    $2, r0
 	asm.assemble_movd(0x189E91, 4)	# movd    $0x189E91, (r5,r4)
 	asm.assemble_movd(0x18AB57, 2)	# movd    $0x18AB57, (r3,r2)
 	asm.assemble_bal(0x1805c4)	# bal     (ra,era), 0x1805c4
-	
-	asm.w([0xe4,0x23])	# adduw   $0x4, sp
-	asm.w([0x01, 0x0e])	# cmpb    $0x1, r0
-	
+	asm.assemble_basic_imm_reg_short(op=0b0001, i=1, imm5=4, dest_reg=15)	# adduw   $0x4, sp
+	asm.assemble_basic_imm_reg_short(op=0b0111, i=0, imm5=1, dest_reg=0)	# cmpb    $0x1, r0
 	asm.assemble_bne(disp=0x16)
+	
 	
 	asm.dump()

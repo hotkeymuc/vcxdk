@@ -39,6 +39,15 @@ class DataStore:
 
 I_BYTE = 0
 I_WORD = 1
+def str_to_format(t):
+	# Format (b/w)
+	form = t[-1:]
+	if form == 'b': i = I_BYTE
+	elif form == 'w': i = I_WORD
+	else:
+		raise TypeError('Unknown format identifier "%s" in mnemonic "%s"!' % (form, t))
+	return i
+
 
 # The op value changes according to format (e.g. w/cw/uw)
 # u = +1, c = +8
@@ -91,6 +100,9 @@ REG_RA = 14
 REG_SP = 15
 
 def str_to_reg(reg):
+	if (reg.startswith('(')):
+		reg = reg[1:-1]
+	
 	if reg == 'era': return REG_ERA
 	elif reg == 'ra': return REG_RA
 	elif reg == 'sp': return REG_SP
@@ -140,6 +152,21 @@ CONDS = {
 	'lt': COND_LT,
 }
 
+def str_is_num(t):
+	"""Check if the string is a parsable number"""
+	if (t[:3] == '$0x'): return True
+	elif (t[:4] == '$-0x'): return True
+	elif (t[:1] == '$'): return True
+	elif (t[:2] == '0x'): return True
+	return t.isnumeric()
+
+def str_to_num(t):
+	if (t[:3] == '$0x'): return int(t[1:], 16)
+	elif (t[:4] == '$-0x'): return 0x10000 - int(t[2:], 16)
+	elif (t[:1] == '$'): return int(t[1:])
+	elif (t[:2] == '0x'): return int(t,16)
+	return int(t)
+
 class CR16B_Assembler:
 	def __init__(self, pc=0x000000):
 		self.stor = DataStore()
@@ -181,29 +208,40 @@ class CR16B_Assembler:
 		else:
 			self.pc = pc
 		
+		#pc_start = pc
+		
 		for line in text.split('\n'):
 			#put('Parsing "%s"' % line)
 			pc = self.pc	# So we can fiddle around more easily
 			
-			# Clean and filter
+			# Strip away comments
 			if ';' in line: line = line[:line.index(';')]
+			
+			# Condense white space
+			#@FIXME: Oh come on! Use a regexp or something!
 			line = line.replace('\t', ' ')
-			line = line.replace(', ', ',')
 			line = line.replace('    ', ' ')
 			line = line.replace('  ', ' ')
 			line = line.replace('  ', ' ')
-			line = line.strip().lower()
+			line = line.replace(', ', ',')
+			line = line.strip()
+			
+			# Skip empty lines
 			if line == '': continue
+			
+			# Remember labels
+			if line[-1:] == ':':
+				#put('Remembering label "%s" as pc=0x%06X...' % (mnem[:-1], self.pc))
+				self.labels[line[:-1]] = pc
+				continue
+			
+			# lower case from now on
+			line = line.lower()
 			
 			# Parse mnemonic and parameters
 			words = line.split(' ')
 			mnem = words[0]
 			
-			# Remember labels
-			if mnem[-1:] == ':':
-				#put('Remembering label "%s" as pc=0x%06X...' % (mnem[:-1], self.pc))
-				self.labels[mnem[:-1]] = pc
-				continue
 			
 			# Parse remainder
 			p = '' if len(words) < 2 else words[1]
@@ -214,7 +252,8 @@ class CR16B_Assembler:
 				#put('"%s"' % p)
 				# Find parameter delimiter
 				try:
-					if p[:1] == '(':	# Handle nested commas, e.g. "(ra,era)" etc.
+					#if p[:1] == '(':	# Handle nested commas, e.g. "(ra,era)" etc.
+					if ('(' in p) and (p.index('(') < p.index(',')):	# Handle nested commas, e.g. "(ra,era)" etc.
 						o = p.index(',', p.index(')'))
 					else:
 						o = p.index(',')
@@ -225,8 +264,13 @@ class CR16B_Assembler:
 				w = p[:o]
 				
 				# Handle immediates and addresses
-				#@FIXME: Negative numbers etc.!
-				if (w[:3] == '$0x'): params.append(int(w[1:], 16))
+				if ('(' in w) and (w.index('(') > 0):
+					# Relative (e.g. "5(sp)")
+					params.append((
+						str_to_num(w[:w.index('(')]),
+						w[w.index('('):]	#w[w.index('(')+1:-1]
+					))
+				elif (w[:3] == '$0x'): params.append(int(w[1:], 16))
 				elif (w[:4] == '$-0x'): params.append(0x10000 - int(w[2:], 16))
 				elif (w[:1] == '$'): params.append(int(w[1:]))
 				elif (w[:2] == '0x'): params.append(int(w,16))
@@ -246,6 +290,50 @@ class CR16B_Assembler:
 			if mnem == 'nop':
 				self.assemble_nop()
 			
+			# SBIT,CBIT, TBIT, STORi $imm4, X
+			elif mnem in ('storb', 'loadb', 'storw', 'loadw'):
+				
+				#@TODO: Phew.... what a permutation mess!
+				# load	disp(reg)	reg
+				# load	addr	reg
+				# stor	reg	disp(reg)
+				# stor	reg	addr
+				# stor	imm	disp(reg)
+				# stor	imm	addr
+				# ...each as byte and word variant
+				# ...plus some special store with far addressing
+				i = str_to_format(mnem)
+				
+				if mnem.startswith('load'):
+					# LOAD
+					if type(params[0]) is int:
+						# LOAD abs, reg
+						self.assemble_load(i=i,	src_reg=None, src_reg_is_far=None, src_disp=params[0], dest_reg=str_to_reg(params[1])	)
+					else:
+						# LOAD disp+reg, reg
+						src_regs = params[0][1][1:-1].split(',')
+						self.assemble_load(i=i,	src_reg=str_to_reg(src_regs[-1]), src_reg_is_far=(len(src_regs) > 1), src_disp=params[0][0], dest_reg=str_to_reg(params[1])	)
+					
+				else:
+					# STOR
+					if type(params[0]) is int:
+						# STOR imm, ...
+						if type(params[1]) is int:
+							# STOR imm, abs
+							self.assemble_stor(i=i,	src_reg=None, src_imm=params[0],	dest_reg=None, dest_disp=params[1]	)
+						else:
+							# STOR imm, disp+reg
+							self.assemble_stor(i=i,	src_reg=None, src_imm=params[0],	dest_reg=str_to_reg(params[1][1]), dest_disp=params[1][0]	)
+					else:
+						# STOR reg, ...
+						if type(params[1]) is int:
+							# STOR reg, abs
+							self.assemble_stor(i=i,	src_reg=str_to_reg(params[0]), src_imm=None,	dest_reg=None, dest_disp=params[1]	)
+						else:
+							# STOR reg, disp+reg
+							self.assemble_stor(i=i,	src_reg=str_to_reg(params[0]), src_imm=None,	dest_reg=str_to_reg(params[1][1]), dest_disp=params[1][0]	)
+				pass
+			
 			elif mnem == 'movd':	# movd is a special case, because it uses a register pair (see manual)
 				self.assemble_movd(params[0], str_to_reg(params[1][1:-1].split(',')[1]))
 				
@@ -258,14 +346,7 @@ class CR16B_Assembler:
 				# Handle all "basic" mnemonics the same way
 				
 				op = OP_BASICS[mnem[:-1]]
-				
-				# Format (b/w)
-				form = mnem[-1:]
-				if form == 'b': i = I_BYTE
-				elif form == 'w': i = I_WORD
-				else:
-					raise TypeError('Unknown format identifier "%s" in mnemonic "%s"!' % (form, mnem))
-				
+				i = str_to_format(mnem)	# WORD/BYTE
 				dest_reg = str_to_reg(params[1])
 				
 				if type(params[0]) is int:
@@ -370,8 +451,6 @@ class CR16B_Assembler:
 			| 0b10001
 		)
 	
-	#def assemble_movw(self, imm16, dest_reg):
-	#	self.assemble_basic_imm_reg_medium(op=OP_MOV, i=I_WORD, imm16=imm16, dest_reg=dest_reg)
 	
 	def assemble_brcond(self, cond, val1, i, reg, disp5m1):
 		"""Assemble Compare-and-Branch (BEQ0/1i, BNE0/1i)"""
@@ -441,7 +520,109 @@ class CR16B_Assembler:
 			| (reg << 1)
 		)
 	
-	#@TODO: LOADi, STORi
+	
+	def assemble_load(self, i, src_reg, src_reg_is_far, src_disp, dest_reg):
+		"""src_size = 0 (5-bit small disp.)
+		Since it is not clear for RR loads which size to use, it must be specified
+		
+		"""
+		if (src_reg is None):
+			# LOAD abs
+			self.w32(
+				  ((src_disp & 0b001111111111111111) << 16)\
+				| (0b10 << 14)\
+				| (i << 13)\
+				| (0b11 << 11)\
+				| (((src_disp & 0b110000000000000000) >> 16) << 9)\
+				| (dest_reg << 5)\
+				| 0b11111
+			)
+		elif (src_reg is not None) and (src_reg_is_far):
+			# LOAD rr (medium/big)
+			self.w32(
+				  ((src_disp & 0b001111111111111111) << 16)\
+				| (0b10 << 14)\
+				| (i << 13)\
+				| (0b11 << 11)\
+				| (((src_disp & 0b110000000000000000) >> 16) << 9)\
+				| (dest_reg << 5)\
+				| (src_reg << 1)\
+				| 0b1
+			)
+			
+		elif (src_reg is not None) and (not src_reg_is_far) and (abs(src_disp) < 32):
+			# LOAD rr (short 5-bit displacement)
+			self.w16(
+				  (0b10 << 14)\
+				| (i << 13)\
+				| (((src_disp & 0b11110) >> 1) << 9)\
+				| (dest_reg << 5)\
+				| (src_reg << 1)\
+				| (src_disp & 0b1)
+			)
+			
+		else:
+			raise TypeError('Parameter combination not yet supported')
+		
+	def assemble_stor(self, i, src_reg, src_imm, dest_reg, dest_disp):
+		
+		#@TODO: STOR with register-relative and no displacement and 4-bit immediate
+		#self.assemble_stor_rr(reg= , imm4=params[0])
+		
+		#@TODO: STOR with register-relative and 16-bit displacement and 4-bit immediate
+		#self.assemble_stor_rr16(reg=..., disp16=... , imm4=params[0])
+		
+		#@TODO: STOR with absolute 18-bit address and 4-bit immediate
+		#self.assemble_stor_abs(ad18=params[1], imm4=params[0])
+		if (src_reg is not None) and (dest_reg is None):
+			# Reg to Absolute
+			self.w32(
+				  ((dest_disp & 0b001111111111111111) << 16)\
+				| (0b11 << 14)\
+				| (i << 13)\
+				| (0b11 << 11)\
+				| (((dest_disp & 0b110000000000000000) >> 16) << 9)\
+				| (src_reg << 5)\
+				| 0b11111
+			)
+		elif (src_reg is None) and (dest_reg is None):
+			# Imm4 to 18-bit absolute
+			
+			if src_imm < 16:
+				self.w32(
+					  ((dest_disp & 0b001111111111111111) << 16)\
+					| (0b00 << 14)\
+					| (i << 13)\
+					| (0b0010 << 9)\
+					| (((dest_disp & 0b100000000000000000) >> 17) << 8)\
+					| (0b11 << 6)\
+					| (((dest_disp & 0b010000000000000000) >> 16) << 5)\
+					| (src_imm << 1)\
+					| 0b0
+				)
+			else:
+				raise ValueError('Immediate too big (4 bits only) for big absolute addressing')
+				
+		elif (src_reg is not None) and (dest_reg is not None) and (dest_disp is not None):
+			# Reg to Reg-relative
+			if abs(dest_disp) < 32:
+				# Short displacement (5 bits)
+				self.w16(
+					  (0b11 << 14)\
+					| (i << 13)\
+					| (((dest_disp & 0b11110) >> 1) << 9)\
+					| (src_reg << 5)\
+					| (dest_reg << 1)\
+					| (dest_disp & 0b1)
+				)
+			#elif abs(dest_disp) < (128*1024):
+			#	# Medium displacement
+			#	self.w32(
+			else:
+				raise ValueError('Larger register-relative displacements not yet supported')
+		else:
+			raise TypeError('Parameter combination not yet supported')
+		
 	
 	def assemble_br(self, disp, cond=0x0e):
 		"""Assemble a branch with condition with given displacement, automatically choses the instruction size.
@@ -535,9 +716,7 @@ def assert_assembly(text, bin, pc=0x0000):
 	put('Checking "%06X	%s" =?= %s' % (pc, text, ' '.join([ '%02X' % b for b in bin]) ))
 	
 	asm = CR16B_Assembler()
-	asm.assemble(text, pc=pc)
-	bin2 = asm.get_data()
-	
+	bin2 = asm.assemble(text, pc=pc)
 	#asm.dump()
 	
 	assert len(bin) == len(bin2), 'Assembled binary sizes differs!\nAsserted: %s\nProduced: %s' % (' '.join([ '%02X' % b for b in bin]), ' '.join([ '%02X' % b for b in bin2]))
@@ -555,6 +734,33 @@ def test_instructions():
 	
 	# Test: 0001A6:	00 02      	0200     	nop
 	assert_assembly('nop', [0x00, 0x02])
+	
+	
+	#@TODO: Implement! Including relative addresses!
+	# Load and Store
+	
+	# Test: 034168:	C2 04 0C 79	04C2 790C	storb   $0x1, 0x0790C
+	assert_assembly('storb   $0x1, 0x0790C', [0xc2, 0x04, 0x0c, 0x79])
+	# Test: 033CB0:	3F F9 10 79	F93F 7910	storw   r9, 0x07910
+	assert_assembly('storw   r9, 0x07910', [0x3f, 0xf9, 0x10, 0x79])
+	# Test: 033E3E:	9E E8      	E89E     	storw   r4, 0x8(sp)
+	assert_assembly('storw   r4, 0x8(sp)', [0x9e, 0xe8])
+	# Test: 033E40:	BE EA      	EABE     	storw   r5, 0xA(sp)
+	assert_assembly('storw   r5, 0xA(sp)', [0xbe, 0xea])
+	
+	
+	# Test: 033F96:	5F 98 32 79	985F 7932	loadb   0x07932, r2
+	assert_assembly('loadb   0x07932, r2', [0x5f, 0x98, 0x32, 0x79])
+	# Test: 033C74:	1F B8 10 79	B81F 7910	loadw   0x07910, r0
+	assert_assembly('loadw   0x07910, r0', [0x1f, 0xb8, 0x10, 0x79])
+	# Test: 033EB8:	05 98 00 00	9805 0000	loadb   0(r3,r2), r0
+	assert_assembly('loadb   0(r3,r2), r0', [0x05, 0x98, 0x00, 0x00])
+	# Test: 033E4A:	5E A8      	A85E     	loadw   0x8(sp), r2
+	assert_assembly('loadw   0x8(sp), r2', [0x5e, 0xa8])
+	# Test: 033E4C:	7E AA      	AA7E     	loadw   0xA(sp), r3
+	assert_assembly('loadw   0xA(sp), r3', [0x7e, 0xaa])
+	
+	
 	
 	# Test MOVx
 	# Test: 034434:	06 18      	1806     	movb    $0x06, r0
@@ -584,16 +790,22 @@ def test_instructions():
 	assert_assembly('movd    $0x100B0C, (r5,r4)', [0x80, 0x66, 0x0c, 0x0b])
 	
 	
-	# Test POP/POPRET
-	# Test: 00041A:	BA 6D      	6DBA     	popret  $2, era ; LMM
-	#asm.assemble_popret(reg=REG_ERA, count=2)	# popret  $2, era ; LMM
-	assert_assembly('popret  $2, era ; LMM', [0xba, 0x6d])
+	# Test PUSH/POP/POPRET
+	# Test: 025674:	3A 6C      	6C3A     	push    $2, era
+	assert_assembly('push    $2, era', [0x3a, 0x6c])
+	# Test: 025676:	6E 6C      	6C6E     	push    $4, r7
+	assert_assembly('push    $4, r7', [0x6e, 0x6c])
+	
 	# Test: 000458:	EE 6C      	6CEE     	pop     $4, r7
 	#asm.assemble_pop(reg=REG_R7, count=4)	# pop     $4, r7
 	assert_assembly('pop     $4, r7', [0xee, 0x6c])
 	# Test: 000928:	96 6C      	6C96     	pop     $1, r11
 	#asm.assemble_pop(reg=REG_R11, count=1)	# pop     $1, r11
 	assert_assembly('pop     $1, r11', [0x96, 0x6c])
+	
+	# Test: 00041A:	BA 6D      	6DBA     	popret  $2, era ; LMM
+	#asm.assemble_popret(reg=REG_ERA, count=2)	# popret  $2, era ; LMM
+	assert_assembly('popret  $2, era ; LMM', [0xba, 0x6d])
 	
 	
 	# Test add/sub with different format qualifiers
@@ -803,26 +1015,75 @@ def run_patch():
 	'''
 	
 	
-	text = """
-		; Add a delay
-		push    $1, r0
-		movw    $0xf000, r0
-		
-	delay_loop:
-		subw    $1, r0
-		bne0w   r0, :delay_loop
-		pop     $1, r0
-	"""
-	
 	# Patch all potential entry points
 	ofss = [
-		0x000200 + 0x04,
-		0x000400 + 0x0a,
-		0x00041C + 0x04,
-		0x000476,	#0x00045C,
-		0x00051C + 2,
-		#0x000542
+		0x000200,
+		#		0x000400,
+		#	0x00041C,
+		#		0x000476,	#0x00045C,
+		#0x00051C,	# This offset on its own is enough to be called (but freezes with half-lit LEDs...)
+		#	0x000542
 	]
+	
+	text = """
+		push    $2, era
+		
+		; Delay
+		movw    $0x7800, r0
+	delay_loop:
+		subw    $1, r0
+		cmpw    $0, r0
+		bne     :delay_loop
+		
+		
+		; Try showing a prompt
+		movd    $0x034191, (r1,r0)	; Dunny what this param does...
+		push    $2, r0
+		;movd    $0x189E91, (r5,r4)	; 9E91 = "Achtung! Kassette beenden! (J/N)?"
+		movd    $0x18AB57, (r3,r2)	; AB57 = "Schuetzt die Erde!"
+		
+		movd    $0x100B18, (r5,r4)	; 00B18 = STRING "028100"
+		;movd    $0x100AD2, (r3,r2)	; 00AD2 = STRING "Update Programm-Zusatzkassette"
+		
+		bal     (ra,era), 0x1805C4	; prompt_yesno__title_r3r2__text_r5r4__sys5c4
+		adduw   $0x4, sp
+		
+		
+		; Delay2
+		movw    $0x7800, r0
+	delay2_loop:
+		subw    $1, r0
+		cmpw    $0, r0
+		bne     :delay2_loop
+		
+		
+		; Try showing a info popup
+		movd    $0x034191, (r1,r0)
+		adduw   $-0x8, sp
+		storw   r0, 0x4(sp)
+		storw   r1, 0x6(sp)
+		
+		movd    $0x18AB57, (r1,r0)	; AB57 = "Schuetzt die Erde!"
+		storw   r0, 0(sp)
+		storw   r1, 0x2(sp)
+		
+		movb    $0, r4
+		movd    $0x084D40, (r3,r2)
+		bal     (ra,era), 0x018CC4	;0x018CC4	; show_info_popup_r1r0
+		adduw   $0x8, sp
+		
+		
+		; Exit/Reboot
+		;popret  $2, era
+		;pop  $2, era
+		;jump    (ra,era)
+		bal     (ra,era), 0x180000	; Reboot
+	
+	halt_loop:
+		br      :halt_loop
+		
+	"""
+	
 	for ofs in ofss:
 		asm = CR16B_Assembler()
 		bin = asm.assemble(pc=ofs, text=text)

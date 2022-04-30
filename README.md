@@ -18,10 +18,13 @@ Goal is to have a simple way to compile ROM cartridges that can be run on any VT
 * VTech BrainStation 9009 CXL [de]
 * VTech Genius TableTop Black Magic CX [de]
 * (more)*
+
 (Marked models are untested, i.e. I don't have a physical one to test... yet)
 
 
 ## History
+* 2021-05-01 We got code execution on a custom compiled ROM using the simple cr16b_asm assembler!
+* 2021-04-10 Got small EEPROMS, started on a bespoke simple assembler
 * 2021-03-25 Working on a development cartridge, but those 3.3V EEPROMs are quite finicky compared to those old 5V ones used with the Z80 models. Meanwhile, a "Computer Bit Communicator" arrived from bella Italia! Looks like a "Genius MASTER e-Power X", but comes with the RS232 level converter cable and "E-Mail" cartridge included. Nice. Also, totally love the italian speech. Ciao!
 * 2021-03-15 Took a high-res image of the 8008 CX screen, counted the pixels (240 x 144) and found those two values being used as a pair in some early regions of the firmware - Houston, we got some graphics entry points!
 * 2021-03-13 Trying to use a "SuperSpeicher (CX)" RAM cartridge as a program cartridge. No luck so far. There seem to be some more cartridge type checks I am missing.

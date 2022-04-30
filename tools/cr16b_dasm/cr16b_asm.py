@@ -271,7 +271,7 @@ class CR16B_Assembler:
 						w[w.index('('):]	#w[w.index('(')+1:-1]
 					))
 				elif (w[:3] == '$0x'): params.append(int(w[1:], 16))
-				elif (w[:4] == '$-0x'): params.append(0x10000 - int(w[2:], 16))
+				elif (w[:4] == '$-0x'): params.append(- int(w[2:], 16))
 				elif (w[:1] == '$'): params.append(int(w[1:]))
 				elif (w[:2] == '0x'): params.append(int(w,16))
 				elif (w[:1] == ':'):
@@ -423,7 +423,8 @@ class CR16B_Assembler:
 		#@FIXME: Need to check unsigned/signed
 		
 		#@FIXME: According to the manual the only allowed values for imm5 are: -16, -14...15 (note: no -15 !)
-		if imm < 16:
+		if abs(imm) < 16:
+			if imm < 0: imm = 0x10 - imm
 			self.assemble_basic_imm_reg_short(op, i, imm, dest_reg)
 		else:
 			self.assemble_basic_imm_reg_medium(op, i, imm, dest_reg)
@@ -826,6 +827,8 @@ def test_instructions():
 	
 	# Test: 000460:	F1 23 E6 FF	23F1 FFE6	adduw   $-0x1A, sp
 	assert_assembly('adduw   $-0x1A, sp', [0xf1, 0x23, 0xe6, 0xff])
+	# Test: 01DF14:	F8 23      	23F8     	adduw   $-0x8, sp
+	assert_assembly('adduw   $-0x8, sp', [0xf8, 0x23])
 	
 	# Test: 002A2A:	02 1E      	1E02     	subb    $0x2, r0
 	assert_assembly('subb    $0x2, r0', [0x02, 0x1E])
@@ -988,88 +991,65 @@ def run_patch():
 	patch_file(filename_dst, ofs=ofs, data=bin)
 	'''
 	
-	'''
-	text = """
-		;movw $0xb700, sp
-		
-		;push    $2, era
-		;bal (ra, era), 0x100	; Call the code above
-		;pop     $2, era
-		
-		push    $2, era
-		
-		movd    $0x034191, (r1,r0)	; Dont know why
-		push $2, r0
-		movd    $0x189E91, (r5,r4)	; 9E91 = "Achtung! Kassette beenden! (J/N)?"
-		movd    $0x18AB57, (r3,r2)	; AB57 = "Schuetzt die Erde!"
-		bal     (ra,era), 0x1805C4	; prompt_yesno__title_r3r2__text_r5r4__sys5c4
-		adduw   $0x4, sp
-		;cmpb    $0x1, r0
-		;bne     0x22c
-		
-		;popret   $2, era
-		
-		pop     $2, era
-		jump    (ra,era)
-	"""
-	'''
+	# Add some strings
+	patch_file(filename_dst, ofs=0x0c00, data=b'HotKey was here!\x00')
+	patch_file(filename_dst, ofs=0x0c40, data=b'HACKED!\x00')
 	
 	
 	# Patch all potential entry points
-	ofss = [
-		0x000200,
-		#		0x000400,
-		#	0x00041C,
-		#		0x000476,	#0x00045C,
-		#0x00051C,	# This offset on its own is enough to be called (but freezes with half-lit LEDs...)
-		#	0x000542
-	]
+	ofs = 0x000200
 	
 	text = """
 		push    $2, era
 		
+	start:
+		
 		; Delay
-		movw    $0x7800, r0
+		movw    $0x7ff0, r0
 	delay_loop:
+		nop
+		nop
+		nop
+		nop
 		subw    $1, r0
 		cmpw    $0, r0
 		bne     :delay_loop
 		
 		
-		; Try showing a prompt
-		movd    $0x034191, (r1,r0)	; Dunny what this param does...
+		; Show a prompt
+		movd    $0x034191, (r1,r0)	; Dunno what this param does...
 		push    $2, r0
-		;movd    $0x189E91, (r5,r4)	; 9E91 = "Achtung! Kassette beenden! (J/N)?"
-		movd    $0x18AB57, (r3,r2)	; AB57 = "Schuetzt die Erde!"
 		
-		movd    $0x100B18, (r5,r4)	; 00B18 = STRING "028100"
-		;movd    $0x100AD2, (r3,r2)	; 00AD2 = STRING "Update Programm-Zusatzkassette"
+		;XXX	movd    $0x18AB57, (r3,r2)	; AB57 = "Schuetzt die Erde!"
+		;???	movd    $0x08AB57, (r3,r2)	; AB57 = "Schuetzt die Erde!"
+		;???	movd    $0x100AD2, (r3,r2)	; 00AD2 = STRING "Update Programm-Zusatzkassette"
+		;OK!	movd    $0x100B18, (r5,r4)	; 00B18 = STRING "028100"
+		movd    $0x100c40, (r3,r2)
+		movd    $0x100c00, (r5,r4)
 		
 		bal     (ra,era), 0x1805C4	; prompt_yesno__title_r3r2__text_r5r4__sys5c4
 		adduw   $0x4, sp
 		
-		
-		; Delay2
-		movw    $0x7800, r0
-	delay2_loop:
-		subw    $1, r0
-		cmpw    $0, r0
-		bne     :delay2_loop
+		; Check result
+		cmpb    $0x1, r0	; 1 = YES, 0 = NO
+		bne     :start	; Back to start
 		
 		
-		; Try showing a info popup
+		; Show a info popup
 		movd    $0x034191, (r1,r0)
 		adduw   $-0x8, sp
 		storw   r0, 0x4(sp)
 		storw   r1, 0x6(sp)
 		
-		movd    $0x18AB57, (r1,r0)	; AB57 = "Schuetzt die Erde!"
+		;movd    $0x18AB57, (r1,r0)	; AB57 = "Schuetzt die Erde!"
+		;movd    0x100AD2, (r1,r0)	; 00AD2 = STRING "Update Programm-Zusatzkassette"
+		movd    0x100c00, (r1,r0)
 		storw   r0, 0(sp)
 		storw   r1, 0x2(sp)
 		
 		movb    $0, r4
 		movd    $0x084D40, (r3,r2)
-		bal     (ra,era), 0x018CC4	;0x018CC4	; show_info_popup_r1r0
+		bal     (ra,era), 0x198CC4	; show_info_popup_r1r0 (0x018CC4)
 		adduw   $0x8, sp
 		
 		
@@ -1084,13 +1064,12 @@ def run_patch():
 		
 	"""
 	
-	for ofs in ofss:
-		asm = CR16B_Assembler()
-		bin = asm.assemble(pc=ofs, text=text)
-		asm.dump()
-		
-		put('Patching at offset 0x%06X (%d bytes)...' % (ofs, len(bin)))
-		patch_file(filename_dst, ofs=ofs, data=bin)
+	asm = CR16B_Assembler()
+	bin = asm.assemble(pc=ofs, text=text)
+	asm.dump()
+	
+	put('Patching at offset 0x%06X (%d bytes)...' % (ofs, len(bin)))
+	patch_file(filename_dst, ofs=ofs, data=bin)
 	
 
 
@@ -1099,8 +1078,8 @@ if __name__ == '__main__':
 	
 	#test_manual_assembly()
 	#test_text_parser()
-	test_instructions()
+	#test_instructions()
 	
-	#run_patch()
+	run_patch()
 	
 	# EOF

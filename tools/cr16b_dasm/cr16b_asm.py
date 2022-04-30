@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
-National Semiconductors
-CR16A/CR16B not-yet-assembler
+Not-yet-Assembler for
+National Semiconductor's CR16B CPU
 
 (at least a tool for helping me patch some bytes in the ROM)
 
@@ -50,6 +50,7 @@ OP_SUBU = 0b0110	# subuX
 OP_SUBC = 0b1101	# subcX
 OP_CMP = 0b0111
 OP_MOV = 0b1100	# movX
+OP_MOVZ = 0b10101	# movzX - kinda special...
 
 OP_PUSH = 0b0110
 OP_POP = 0b0110	# Same as PUSH! But param differs
@@ -58,6 +59,7 @@ OP_POPRET = 0b0110	# Same as PUSH! But param differs
 # List of basic 3-letter mnemonics that can be all handled the same way
 OP_BASICS = {
 	'mov': OP_MOV,
+	'movz': OP_MOVZ,
 	
 	'add': OP_ADD,
 	'addu': OP_ADDU,
@@ -109,18 +111,34 @@ R_CARH = 0b1110
 
 COND_EQ = 0b0000
 COND_NE = 0b0001
-COND_GE = 0b1101
 COND_CS = 0b0010
 COND_CC = 0b0011
 COND_HI = 0b0100
 COND_LS = 0b0101
-COND_LO = 0b1010
-COND_HS = 0b1011
 COND_GT = 0b0110
 COND_LE = 0b0111
 COND_FS = 0b1000
 COND_FC = 0b1001
+COND_LO = 0b1010
+COND_HS = 0b1011
 COND_LT = 0b1100
+COND_GE = 0b1101
+CONDS = {
+	'eq': COND_EQ,
+	'ne': COND_NE,
+	'ge': COND_GE,
+	'cs': COND_CS,
+	'cc': COND_CC,
+	'hi': COND_HI,
+	'ls': COND_LS,
+	'lo': COND_LO,
+	'hs': COND_HS,
+	'gt': COND_GT,
+	'le': COND_LE,
+	'fs': COND_FS,
+	'fc': COND_FC,
+	'lt': COND_LT,
+}
 
 class CR16B_Assembler:
 	def __init__(self, pc=0x000000):
@@ -165,6 +183,7 @@ class CR16B_Assembler:
 		
 		for line in text.split('\n'):
 			#put('Parsing "%s"' % line)
+			pc = self.pc	# So we can fiddle around more easily
 			
 			# Clean and filter
 			if ';' in line: line = line[:line.index(';')]
@@ -183,7 +202,7 @@ class CR16B_Assembler:
 			# Remember labels
 			if mnem[-1:] == ':':
 				#put('Remembering label "%s" as pc=0x%06X...' % (mnem[:-1], self.pc))
-				self.labels[mnem[:-1]] = self.pc
+				self.labels[mnem[:-1]] = pc
 				continue
 			
 			# Parse remainder
@@ -208,6 +227,7 @@ class CR16B_Assembler:
 				# Handle immediates and addresses
 				#@FIXME: Negative numbers etc.!
 				if (w[:3] == '$0x'): params.append(int(w[1:], 16))
+				elif (w[:4] == '$-0x'): params.append(0x10000 - int(w[2:], 16))
 				elif (w[:1] == '$'): params.append(int(w[1:]))
 				elif (w[:2] == '0x'): params.append(int(w,16))
 				elif (w[:1] == ':'):
@@ -223,8 +243,16 @@ class CR16B_Assembler:
 			# Handle mnemonics
 			#put('%s	%s' % (mnem, str(params)))
 			
-			if mnem == 'movd':	# movd is a special case, because it uses a register pair (see manual)
+			if mnem == 'nop':
+				self.assemble_nop()
+			
+			elif mnem == 'movd':	# movd is a special case, because it uses a register pair (see manual)
 				self.assemble_movd(params[0], str_to_reg(params[1][1:-1].split(',')[1]))
+				
+			elif mnem == 'movzb':
+				src_reg = str_to_reg(params[0])
+				dest_reg = str_to_reg(params[1])
+				self.assemble_basic_reg_reg(op=OP_MOVZ, i=I_BYTE, src_reg=src_reg, dest_reg=dest_reg, op2=0)
 			
 			elif mnem[:-1] in OP_BASICS:
 				# Handle all "basic" mnemonics the same way
@@ -257,21 +285,25 @@ class CR16B_Assembler:
 			elif mnem == 'bal':
 				self.assemble_bal(disp21=params[1] - pc, lnk_pair=str_to_reg(params[0][1:-1].split(',')[1]))
 			
-			elif mnem == 'beq0b':
-				self.assemble_brcond(cond=COND_EQ, val1=0, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
-			elif mnem == 'beq1b':
-				self.assemble_brcond(cond=COND_EQ, val1=1, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
-			elif mnem == 'bne0b':
-				self.assemble_brcond(cond=COND_NE, val1=0, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
-			elif mnem == 'bne1b':
-				self.assemble_brcond(cond=COND_NE, val1=1, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
-				
+			
+			#elif mnem == 'beq0b':	self.assemble_brcond(cond=COND_EQ, val1=0, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
+			#elif mnem == 'beq1b':	self.assemble_brcond(cond=COND_EQ, val1=1, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
+			#elif mnem == 'bne0b':	self.assemble_brcond(cond=COND_NE, val1=0, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
+			#elif mnem == 'bne1b':	self.assemble_brcond(cond=COND_NE, val1=1, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
+			elif (len(mnem) == 5) and (mnem[:3] in ('beq', 'bne')):	# Special compare-and-branch (beq0/1b/2)
+				self.assemble_brcond(
+					cond=COND_NE if mnem[1:3] == 'ne' else COND_EQ,	# condition: eq or ne
+					val1=int(mnem[3:4]),	# val: 0 or 1
+					i=I_WORD if mnem[-1:] == 'w' else I_BYTE,	# format: b or w
+					reg=str_to_reg(params[0]),	# register
+					disp5m1=params[1] - pc	# displacement
+				)
+			
+			elif (mnem[:1] == 'b') and (mnem[1:] in CONDS):	# beq, bne, ...
+				self.assemble_br(disp=params[0] - pc, cond=CONDS[mnem[1:]])
+			
 			elif mnem == 'br':
-				self.assemble_br(disp=params[0] - self.pc)	# cond=0x0e
-			elif mnem == 'beq':
-				self.assemble_br(disp=params[0] - self.pc, cond=COND_EQ)
-			elif mnem == 'bne':
-				self.assemble_br(disp=params[0] - self.pc, cond=COND_NE)
+				self.assemble_br(disp=params[0] - pc)	# cond=0x0e
 			
 			elif mnem == 'jump':
 				self.assemble_jump(reg_pair=str_to_reg(params[0][1:-1].split(',')[1]))
@@ -283,7 +315,10 @@ class CR16B_Assembler:
 		
 		return self.stor.get_bytes()
 	
-	def assemble_basic_reg_reg(self, op, i, src_reg, dest_reg):
+	def assemble_nop(self):
+		self.w16(0x0200)
+	
+	def assemble_basic_reg_reg(self, op, i, src_reg, dest_reg, op2=1):
 		"""Basic instruction involving two registers"""
 		
 		# 01 at 15..14
@@ -295,7 +330,7 @@ class CR16B_Assembler:
 			| (op << 9)\
 			| (dest_reg << 5)\
 			| (src_reg << 1)\
-			| 1
+			| op2	# Usually 1
 		
 		# [ (instr & 0x000000ff), ((instr & 0x0000ff00) >> 8) ]
 		self.w16(instr16)
@@ -419,7 +454,7 @@ class CR16B_Assembler:
 		if disp < 0:
 			# Backwards
 			#@FIXME: This is done by trial and error
-			self.assemble_br_medium(disp=disp + 0x200000, cond=0x0e)
+			self.assemble_br_medium(disp=disp + 0x200000, cond=cond)	#0x0e)
 		elif (disp < 0b1000000000):
 			#put('Short')
 			self.assemble_br_short(disp=disp, cond=cond)
@@ -513,10 +548,26 @@ def assert_assembly(text, bin, pc=0x0000):
 	#put('Okay!')
 	return True
 
-def test_binary_equality():
+def test_instructions():
 	"""Compare assembled code against known binary output"""
 	
 	#asm = CR16B_Assembler()
+	
+	# Test: 0001A6:	00 02      	0200     	nop
+	assert_assembly('nop', [0x00, 0x02])
+	
+	# Test MOVx
+	# Test: 034434:	06 18      	1806     	movb    $0x06, r0
+	assert_assembly('movb    $0x06, r0', [0x06, 0x18])
+	# Test: 034420:	0F 78      	780F     	movw    r7, r0
+	assert_assembly('movw    r7, r0', [0x0f, 0x78])
+	# Test: 000004:	11 38 00 01	3811 0100	movw    $0x0100, r0
+	assert_assembly('movw    $0x0100, r0', [0x11, 0x38, 0x00, 0x01])
+	
+	# Test: 034442:	02 6A      	6A02     	movzb   r1, r0
+	assert_assembly('movzb   r1, r0', [0x02, 0x6a])
+	# Test: 0360CA:	C0 6A      	6AC0     	movzb   r0, r6
+	assert_assembly('movzb   r0, r6', [0xc0, 0x6a])
 	
 	# Test MOVD
 	# Test: 000682:	00 66 98 09	6600 0998	movd    $0x100998, (r1,r0)
@@ -561,6 +612,9 @@ def test_binary_equality():
 	# Test: 001092:	01 72      	7201     	addcw   r0, r0
 	assert_assembly('addcw   r0, r0', [0x01, 0x72])
 	
+	# Test: 000460:	F1 23 E6 FF	23F1 FFE6	adduw   $-0x1A, sp
+	assert_assembly('adduw   $-0x1A, sp', [0xf1, 0x23, 0xe6, 0xff])
+	
 	# Test: 002A2A:	02 1E      	1E02     	subb    $0x2, r0
 	assert_assembly('subb    $0x2, r0', [0x02, 0x1E])
 	# Test: 00204A:	A1 3E      	3EA1     	subw    $0x1, r5
@@ -604,7 +658,7 @@ def test_binary_equality():
 	assert_assembly('br      0x033762', [0xde, 0x75, 0x07, 0xff], pc=0x03385C)
 	
 	# Test: Compare-and-Branch
-	##@FIXME: This does not work!
+	#@FIXME: This does not work!
 	## Test: 015946:	1D 14      	141D     	beq0b   r0, 0x01594A
 	##asm.assemble_beq(op=0xe, opext=3, i=I_BYTE, reg=REG_R0, imm4m1=(0x01594A - 0x015946))
 	# Test: 03194A:	09 15      	1509     	beq0b   r8, 0x031952
@@ -619,9 +673,30 @@ def test_binary_equality():
 	# Test: 015904:	CB 14      	14CB     	bne1b   r0, 0x01590E
 	#asm.assemble_brcond(cond=COND_NE, val1=1, i=I_BYTE, reg=REG_R0, disp5m1=(0x01590E - 0x015904))
 	assert_assembly('bne1b   r0, 0x01590E', [0xcb, 0x14], pc=0x015904)
+	#Test: 002256:	89 34      	3489     	bne0w   r0, 0x00225E
+	assert_assembly('bne0w   r0, 0x00225E', [0x89, 0x34], pc=0x002256)
+	
+	# Test: 0014D2:	20 2E      	2E20     	cmpw    $0, r1
+	assert_assembly('cmpw    $0, r1', [0x20, 0x2e], pc=0x0014D2)
+	# Test: 0014D4:	D2 40      	40D2     	bgt     0x0014E6
+	assert_assembly('bgt     0x0014E6', [0xd2, 0x40], pc=0x0014D4)
+	# Test: 0014D6:	26 40      	4026     	bne     0x0014DC
+	assert_assembly('bne     0x0014DC', [0x26, 0x40], pc=0x0014D6)
+	
+	#@FIXME: Wrong output!
+	#### Test: 0014E4:	F8 5E      	5EF8     	ble     0x0014EC
+	###assert_assembly('ble     0x0014EC', [0xf8, 0x5e], pc=0x0014E4)
+	
+	# Test: 001720:	EA 40      	40EA     	ble     0x00172A
+	assert_assembly('ble     0x00172A', [0xea, 0x40], pc=0x001720)
+	
+	# Test: 0014EA:	80 42      	4280     	bhi     0x00150A
+	assert_assembly('bhi     0x00150A', [0x80, 0x42], pc=0x0014EA)
+	# Test: 0014F0:	3A 41      	413A     	bfc     0x00150A
+	assert_assembly('bfc     0x00150A', [0x3a, 0x41], pc=0x0014F0)
 	
 	#asm.dump()
-	put('All OK')
+	put('All tests OK')
 
 
 def test_manual_assembly():
@@ -640,7 +715,7 @@ def test_manual_assembly():
 	asm.assemble_br(cond=COND_NE, disp=0x16)
 	asm.dump()
 
-def test_text_assembly():
+def test_text_parser():
 	"""Assemble using a text listing"""
 	
 	asm = CR16B_Assembler(pc=0x200)
@@ -682,7 +757,7 @@ def patch_file(filename, ofs, data):
 		#h.write(data)
 		h.write(data2)
 
-def test_patch():
+def run_patch():
 	"""Patch a ROM"""
 	filename_src = '/z/data/_code/_c/V-Tech/vcxdk.git/__VTech_Genius_Lerncomputer/Cartridges/GLCX_Update_Programm-Zusatzkassette/CART_GL8008CX_Update.dump.000.seg0-64KB__4KB_used.bin'
 	filename_dst = '/z/data/_code/_c/V-Tech/vcxdk.git/__VTech_Genius_Lerncomputer/Cartridges/GLCX_Update_Programm-Zusatzkassette/CART_GL8008CX_Update_hacked.8KB.bin'
@@ -690,6 +765,7 @@ def test_patch():
 	# Create a copy
 	copy_file(filename_src, filename_dst, ofs=0, size=8192)
 	
+	'''
 	# Patch it
 	ofs = 0x100
 	bin = asm.assemble(pc=ofs, text="""
@@ -698,9 +774,9 @@ def test_patch():
 	
 	put('Patching at offset 0x%06X (%d bytes)...' % (ofs, len(bin)))
 	patch_file(filename_dst, ofs=ofs, data=bin)
+	'''
 	
-	
-	
+	'''
 	text = """
 		;movw $0xb700, sp
 		
@@ -724,15 +800,28 @@ def test_patch():
 		pop     $2, era
 		jump    (ra,era)
 	"""
+	'''
+	
+	
+	text = """
+		; Add a delay
+		push    $1, r0
+		movw    $0xf000, r0
+		
+	delay_loop:
+		subw    $1, r0
+		bne0w   r0, :delay_loop
+		pop     $1, r0
+	"""
 	
 	# Patch all potential entry points
 	ofss = [
-		0x000200,
-		0x000400,
-		0x00041C,
-		0x00045C,
-		0x00051C,
-		0x000542
+		0x000200 + 0x04,
+		0x000400 + 0x0a,
+		0x00041C + 0x04,
+		0x000476,	#0x00045C,
+		0x00051C + 2,
+		#0x000542
 	]
 	for ofs in ofss:
 		asm = CR16B_Assembler()
@@ -746,10 +835,11 @@ def test_patch():
 
 if __name__ == '__main__':
 	
-	test_binary_equality()
 	
-	#test_text_assembly()
+	#test_manual_assembly()
+	#test_text_parser()
+	test_instructions()
 	
-	#test_patch()
+	#run_patch()
 	
 	# EOF

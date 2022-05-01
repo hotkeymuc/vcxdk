@@ -6,10 +6,16 @@ National Semiconductor's CR16B CPU
 (at least a tool for helping me patch some bytes in the ROM)
 
 
+TODO:
+	* wait, res, mulXX, storm, loadm, eiwait, ei, di, 
+
 2022-04-20 Bernhard "HotKey" Slawik
 """
 
 def put(t):
+	print(t)
+def put_debug(t):
+	#pass
 	print(t)
 
 class DataStore:
@@ -173,6 +179,12 @@ class CR16B_Assembler:
 		self.pc = pc
 		self.labels = {}
 	
+	def put(self, t):
+		put(t)
+	
+	def put_debug(self, t):
+		put_debug(t)
+	
 	def w_raw(self, v):
 		if type(v) is list:
 			for w in v:
@@ -196,11 +208,44 @@ class CR16B_Assembler:
 		"""Output data store"""
 		put(' '.join(['%02X'%b for b in self.stor.get_data()]))
 	
-	def clear(self):
+	def clear(self, keep_labels=False):
 		self.stor.clear()
-		self.labels = {}
+		
+		if keep_labels:
+			pass
+		else:
+			self.labels = {}
 	
 	def assemble(self, text, pc=None):
+		"""Parse the given assembly text into a binary blob.
+		This is a wrapper around the internal _assemble() method, so we can automatically initiate a multi-pass (for forward jumps).
+		Since the compact binary format has different sized instructions for a branch, the binary size and label offsets may change depending on how far a label is away.
+		This means: The output does not necessarily converge after 2 passes.
+		"""
+		
+		# Assemble until all labels are resolved and the output "converges"
+		pass_num = 0
+		bin = None
+		while True:
+			pass_num += 1
+			self.put('Pass #%d...' % pass_num)
+			bin_old = bin
+			bin = self._assemble(text=text, pc=pc)
+			
+			# Check if the binary has changed (i.e. another forward-label has been resolved)
+			#self.put_debug(' '.join(['%02X'%b for b in bin]))
+			if bin == bin_old:
+				self.put('Output has converged.')
+				break
+			
+			self.put_debug('Output is still changing. Need to do another pass to verify')
+			# Clear the output, but keep the labels
+			self.clear(keep_labels=True)
+		
+		return bin
+	
+	
+	def _assemble(self, text, pc=None):
 		"""Dirty assembly text parser"""
 		
 		if pc is None:
@@ -210,9 +255,11 @@ class CR16B_Assembler:
 		
 		#pc_start = pc
 		
+		line_num = 0
 		for line in text.split('\n'):
-			#put('Parsing "%s"' % line)
+			line_num += 1
 			pc = self.pc	# So we can fiddle around more easily
+			#self.put_debug('Parsing raw input: %06X	%s' % (pc, line))
 			
 			# Strip away comments
 			if ';' in line: line = line[:line.index(';')]
@@ -229,54 +276,85 @@ class CR16B_Assembler:
 			# Skip empty lines
 			if line == '': continue
 			
+			self.put_debug('Parsing statement:	%06X	%s' % (pc, line))
+			
 			# Remember labels
 			if line[-1:] == ':':
-				#put('Remembering label "%s" as pc=0x%06X...' % (mnem[:-1], self.pc))
-				self.labels[line[:-1]] = pc
+				label_name = line[:-1]
+				
+				if label_name in self.labels:
+					# Already known
+					if self.labels[label_name] != pc:
+						self.put('Label "%s" is already known, but changed from 0x%06X to pc=0x%06X...' % (label_name, self.labels[label_name], pc))
+					#else:
+					#	self.put_debug('Label "%s" is already known and steady at 0x%06X...' % (label_name, self.labels[label_name]))
+				else:
+					self.put('Remembering new label "%s" as 0x%06X...' % (label_name, pc))
+				
+				self.labels[label_name] = pc
 				continue
 			
 			# lower case from now on
-			line = line.lower()
+			#line = line.lower()
 			
 			# Parse mnemonic and parameters
 			words = line.split(' ')
-			mnem = words[0]
+			mnem = words[0].lower()
 			
 			
 			# Parse remainder
-			p = '' if len(words) < 2 else words[1]
+			p = '' if len(words) < 2 else line[len(words[0])+1:]	#words[1]
 			
 			# Split parameters
 			params = []
 			while len(p) > 0:
-				#put('"%s"' % p)
+				#self.put_debug('"%s"' % p)
+				
 				# Find parameter delimiter
-				try:
-					#if p[:1] == '(':	# Handle nested commas, e.g. "(ra,era)" etc.
-					if ('(' in p) and (p.index('(') < p.index(',')):	# Handle nested commas, e.g. "(ra,era)" etc.
-						o = p.index(',', p.index(')'))
-					else:
-						o = p.index(',')
-				except ValueError:
-					o = len(p)
+				if p[:1] == "'":
+					# String parameter - search for the end of it
+					o = p.index("'", 1)+1
+					
+					if ',' in p[o:]:
+						o = p.index(',', o)
+				else:
+					try:
+						# Handle nested commas, e.g. in register pairs like "(ra,era)" etc.
+						if ('(' in p) and (p.index('(') < p.index(',')):	# Handle nested commas, e.g. "(ra,era)" etc.
+							o = p.index(',', p.index(')'))
+						else:
+							o = p.index(',')
+					except ValueError:
+						o = len(p)
 				
 				# Get the first remaining word
 				w = p[:o]
 				
 				# Handle immediates and addresses
 				if ('(' in w) and (w.index('(') > 0):
-					# Relative (e.g. "5(sp)")
+					# Register-relatives, e.g. "5(sp)"
+					# Add them as a tuple
 					params.append((
 						str_to_num(w[:w.index('(')]),
 						w[w.index('('):]	#w[w.index('(')+1:-1]
 					))
-				elif (w[:3] == '$0x'): params.append(int(w[1:], 16))
-				elif (w[:4] == '$-0x'): params.append(- int(w[2:], 16))
-				elif (w[:1] == '$'): params.append(int(w[1:]))
-				elif (w[:2] == '0x'): params.append(int(w,16))
+				elif str_is_num(w): params.append(str_to_num(w))
+				#elif (w[:3] == '$0x'): params.append(int(w[1:], 16))
+				#elif (w[:4] == '$-0x'): params.append(- int(w[2:], 16))
+				#elif (w[:1] == '$'): params.append(int(w[1:]))
+				#elif (w[:2] == '0x'): params.append(int(w,16))
 				elif (w[:1] == ':'):
-					#put('Looking up label "%s"...' % w[1:])
-					params.append(self.labels[w[1:]])
+					label_name = w[1:]
+					if not label_name in self.labels:
+						#label_addr = 0x1fffff	# Assume far address
+						label_addr = pc + 0x10	# Assume short branch
+						self.put('(Yet) unknown label "%s" at line #%d, pc=0x%06X. Using dummy 0x%06X' % (label_name, line_num, pc, label_addr))
+						
+					else:
+						label_addr = self.labels[label_name]
+						self.put_debug('Label "%s" resolved to 0x%06X' % (label_name, label_addr))
+						
+					params.append(label_addr)
 				else:
 					# Remember "as-is"
 					params.append(w)
@@ -285,9 +363,34 @@ class CR16B_Assembler:
 				p = p[o+1:]
 			
 			# Handle mnemonics
-			#put('%s	%s' % (mnem, str(params)))
+			#self.put('%s	%s' % (mnem, str(params)))
 			
-			if mnem == 'nop':
+			if mnem == 'db':
+				# Define byte(s)
+				for p in params:
+					if type(p) is int:
+						self.w8(p)
+					elif (type(p) is str) and (p[:1] == p[-1:]) and (p[:1] in ("'", '"')):
+						for b in p[1:-1]:
+							self.w8(ord(b))
+					else:
+						self.put('Unknown parameter to db: "%s"?' % str(p))
+			
+			elif mnem == 'ofs':
+				# Pad until given address
+				d = params[0] - pc
+				if d < 0:
+					self.put('Invalid padding! Already beyond the given address (0x%06X > 0x%06X)!' % (pc, params[0]))
+				else:
+					self.put('Padding %d bytes until offset 0x%06X...' % (d, params[0]))
+					for _ in range(d): self.w8(0x00)
+				
+			elif (len(words) > 1) and (words[1] == 'equ'):
+				# Define EQU constants
+				self.labels[words[0]] = params[2]
+				
+			
+			elif mnem == 'nop':
 				self.assemble_nop()
 			
 			# SBIT,CBIT, TBIT, STORi $imm4, X
@@ -638,10 +741,10 @@ class CR16B_Assembler:
 			#@FIXME: This is done by trial and error
 			self.assemble_br_medium(disp=disp + 0x200000, cond=cond)	#0x0e)
 		elif (disp < 0b1000000000):
-			#put('Short')
+			#self.put_debug('Short')
 			self.assemble_br_short(disp=disp, cond=cond)
 		else:
-			#put('Long')
+			#self.put_debug('Long')
 			self.assemble_br_medium(disp=disp, cond=cond)
 	
 	
@@ -713,7 +816,7 @@ class CR16B_Assembler:
 
 ### Tests
 def assert_assembly(text, bin, pc=0x0000):
-	"""Helper to check assembly text against asserted binary output"""
+	"""Helper function to check assembly text against asserted binary output"""
 	put('Checking "%06X	%s" =?= %s' % (pc, text, ' '.join([ '%02X' % b for b in bin]) ))
 	
 	asm = CR16B_Assembler()
@@ -980,102 +1083,128 @@ def run_patch():
 	# Create a copy
 	copy_file(filename_src, filename_dst, ofs=0, size=8192)
 	
-	'''
-	# Patch it
-	ofs = 0x100
-	bin = asm.assemble(pc=ofs, text="""
-	
-	""")
-	
-	put('Patching at offset 0x%06X (%d bytes)...' % (ofs, len(bin)))
-	patch_file(filename_dst, ofs=ofs, data=bin)
-	'''
 	
 	# Add some strings
+	#@TODO: Use assembly for that: "ofs 0xXXXX" and "db 'something'"
 	patch_file(filename_dst, ofs=0x0c00, data=b'HotKey was here!\x00')
 	patch_file(filename_dst, ofs=0x0c40, data=b'HACKED!\x00')
 	
 	
 	# Patch all potential entry points
-	ofs = 0x000200
+	#ofs = 0x000200
+	ofs = 0
 	
 	text = """
-		push    $2, era
-		
-	start:
-		
-		; Delay
-		movw    $0x7ff0, r0
-	delay_loop:
-		nop
-		nop
-		nop
-		nop
-		subw    $1, r0
-		cmpw    $0, r0
-		bne     :delay_loop
-		
-		
-		; Show a prompt
-		movd    $0x034191, (r1,r0)	; Dunno what this param does...
-		push    $2, r0
-		
-		;XXX	movd    $0x18AB57, (r3,r2)	; AB57 = "Schuetzt die Erde!"
-		;???	movd    $0x08AB57, (r3,r2)	; AB57 = "Schuetzt die Erde!"
-		;???	movd    $0x100AD2, (r3,r2)	; 00AD2 = STRING "Update Programm-Zusatzkassette"
-		;OK!	movd    $0x100B18, (r5,r4)	; 00B18 = STRING "028100"
-		movd    $0x100c40, (r3,r2)
-		movd    $0x100c00, (r5,r4)
-		
-		bal     (ra,era), 0x1805C4	; prompt_yesno__title_r3r2__text_r5r4__sys5c4
-		adduw   $0x4, sp
-		
-		; Check result
-		cmpb    $0x1, r0	; 1 = YES, 0 = NO
-		bne     :start	; Back to start
-		
-		
-		; Show a info popup
-		movd    $0x034191, (r1,r0)
-		adduw   $-0x8, sp
-		storw   r0, 0x4(sp)
-		storw   r1, 0x6(sp)
-		
-		;movd    $0x18AB57, (r1,r0)	; AB57 = "Schuetzt die Erde!"
-		;movd    0x100AD2, (r1,r0)	; 00AD2 = STRING "Update Programm-Zusatzkassette"
-		movd    0x100c00, (r1,r0)
-		storw   r0, 0(sp)
-		storw   r1, 0x2(sp)
-		
-		movb    $0, r4
-		movd    $0x084D40, (r3,r2)
-		bal     (ra,era), 0x198CC4	; show_info_popup_r1r0 (0x018CC4)
-		adduw   $0x8, sp
-		
-		
-		; Exit/Reboot
-		;popret  $2, era
-		;pop  $2, era
-		;jump    (ra,era)
-		bal     (ra,era), 0x180000	; Reboot
+; Cartridge header
+	db      'VTECHCARTRIDGE'
+	db      0x00, 0x00
+	db      0xed, 0x01
+	db      '016959'
+	db      0x00, 0x02, 0x01, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00
+	db      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0B, 0x51, 0x00, 0x00, 0x00, 0x00, 0x00
+	db      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+	db      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04
+	db      0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04
+	db      0x00, 0x00, 0x04, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04
+	db      0x00, 0x00, 0x05, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04
+	db      0x00, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05
+	db      0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05
+	db      0x00, 0x00, 0x03, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05
+	db      0x00, 0x00, 0x04, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05
+	db      0x00, 0x00, 0x05, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05
+	db      0x00, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03
+	db      0x00, 0x00, 0x04, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04
+	db      0x00, 0x00, 0x03, 0x00, 0x02, 0x00
 	
-	halt_loop:
-		br      :halt_loop
-		
+; Some strings
+ofs 0x100
+str_hello:
+	db      'Hello world!',0x00
+str_htk:
+	db      'HotKey was truly here!',0x00
+
+; Actual code (at offset 0x200)
+ofs 0x200
+main:
+	push    $2, era
+	
+start:
+	
+	; Delay
+	movw    $0x7ff0, r0
+delay_loop:
+	nop
+	nop
+	nop
+	nop
+	subw    $1, r0
+	cmpw    $0, r0
+	bne     :delay_loop
+	
+	
+	; Show a prompt
+	movd    $0x034191, (r1,r0)	; Dunno what this param does...
+	push    $2, r0
+	
+	;OK!	movd    $0x100B18, (r5,r4)	; 00B18 = STRING "028100"
+	;OK!	movd    $0x100c40, (r3,r2)	; my own string
+	;OK!	movd    $0x100c00, (r5,r4)	; my own string
+	movd    :str_hello, (r3,r2)
+	adduw   $0x10, r3	; Cartridge ROM
+	movd    :str_htk, (r5,r4)
+	adduw   $0x10, r5	; Cartridge ROM
+	
+	bal     (ra,era), 0x1805C4	; prompt_yesno__title_r3r2__text_r5r4__sys5c4
+	adduw   $0x4, sp
+	
+	; Check result
+	cmpb    $0x1, r0	; 1 = YES, 0 = NO
+	;beq     :start	; Back to start
+	beq     :end	; Exit out
+	
+	
+	; Show a info popup
+	movd    $0x034191, (r1,r0)
+	adduw   $-0x8, sp
+	storw   r0, 0x4(sp)
+	storw   r1, 0x6(sp)
+	
+	;movd    $0x18AB57, (r1,r0)	; AB57 = "Schuetzt die Erde!"
+	;movd    0x100AD2, (r1,r0)	; 00AD2 = STRING "Update Programm-Zusatzkassette"
+	movd    0x100c00, (r1,r0)	; my own string
+	storw   r0, 0(sp)
+	storw   r1, 0x2(sp)
+	
+	movb    $0, r4
+	movd    $0x084D40, (r3,r2)	; Dunno what this param does
+	bal     (ra,era), 0x198CC4	; show_info_popup_r1r0 (0x018CC4)
+	adduw   $0x8, sp
+	
+	
+end:
+	; Exit/Reboot
+	;popret  $2, era
+	;pop  $2, era
+	;jump    (ra,era)
+	bal     (ra,era), 0x180000	; Reboot
+
+halt_loop:
+	br      :halt_loop
+	
 	"""
 	
 	asm = CR16B_Assembler()
 	bin = asm.assemble(pc=ofs, text=text)
 	asm.dump()
 	
-	put('Patching at offset 0x%06X (%d bytes)...' % (ofs, len(bin)))
+	put('Patching file at offset 0x%06X (%d bytes)...' % (ofs, len(bin)))
 	patch_file(filename_dst, ofs=ofs, data=bin)
 	
 
 
 if __name__ == '__main__':
 	
-	
+	# Enable what to do, e.g. do assembler self-tests or actually try assembling and patching something
 	#test_manual_assembly()
 	#test_text_parser()
 	#test_instructions()

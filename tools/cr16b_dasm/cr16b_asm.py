@@ -160,23 +160,24 @@ CONDS = {
 
 def str_is_num(t):
 	"""Check if the string is a parsable number"""
-	if (t[:3] == '$0x'): return True
+	if   (t[:3] == '$0x'): return True
 	elif (t[:4] == '$-0x'): return True
-	elif (t[:1] == '$'): return True
+	elif (t[:2] == '$-') and (t[2:].isnumeric()): return True
+	elif (t[:1] == '$') and (t[1:].isnumeric()): return True
 	elif (t[:2] == '0x'): return True
 	return t.isnumeric()
 
 def str_to_num(t):
-	if (t[:3] == '$0x'): return int(t[1:], 16)
+	if   (t[:3] == '$0x'): return int(t[1:], 16)
 	elif (t[:4] == '$-0x'): return 0x10000 - int(t[2:], 16)
 	elif (t[:1] == '$'): return int(t[1:])
 	elif (t[:2] == '0x'): return int(t,16)
 	return int(t)
 
 class CR16B_Assembler:
-	def __init__(self, pc=0x000000):
+	def __init__(self):
 		self.stor = DataStore()
-		self.pc = pc
+		self.pc = 0
 		self.labels = {}
 	
 	def put(self, t):
@@ -223,10 +224,11 @@ class CR16B_Assembler:
 		This means: The output does not necessarily converge after 2 passes.
 		"""
 		
-		# Assemble until all labels are resolved and the output "converges"
+		# Assemble until all labels are resolved, branch distances have settled and the output "converges"
+		MAX_PASS_NUM = 99
 		pass_num = 0
 		bin = None
-		while True:
+		while (pass_num < MAX_PASS_NUM):
 			pass_num += 1
 			self.put('Pass #%d...' % pass_num)
 			bin_old = bin
@@ -235,12 +237,15 @@ class CR16B_Assembler:
 			# Check if the binary has changed (i.e. another forward-label has been resolved)
 			#self.put_debug(' '.join(['%02X'%b for b in bin]))
 			if bin == bin_old:
-				self.put('Output has converged.')
+				self.put('Output has converged after %d(-1) passes!' % pass_num)
 				break
 			
 			self.put_debug('Output is still changing. Need to do another pass to verify')
 			# Clear the output, but keep the labels
 			self.clear(keep_labels=True)
+		
+		if pass_num >= MAX_PASS_NUM:
+			raise RuntimeError('Too many passes! (%d)' % pass_num)
 		
 		return bin
 	
@@ -275,6 +280,8 @@ class CR16B_Assembler:
 			
 			# Skip empty lines
 			if line == '': continue
+			# Ignore full-line comments
+			if line[:1] == '#': continue
 			
 			self.put_debug('Parsing statement:	%06X	%s' % (pc, line))
 			
@@ -343,8 +350,10 @@ class CR16B_Assembler:
 				#elif (w[:4] == '$-0x'): params.append(- int(w[2:], 16))
 				#elif (w[:1] == '$'): params.append(int(w[1:]))
 				#elif (w[:2] == '0x'): params.append(int(w,16))
-				elif (w[:1] == ':'):
-					label_name = w[1:]
+				#elif (w[:1] == ':'):
+				#	label_name = w[1:]
+				elif (w[:1] in ['.', '_']):	# Assume ".foo" and "_bar" to be a defined symbols
+					label_name = w
 					if not label_name in self.labels:
 						#label_addr = 0x1fffff	# Assume far address
 						label_addr = pc + 0x10	# Assume short branch
@@ -355,6 +364,11 @@ class CR16B_Assembler:
 						self.put_debug('Label "%s" resolved to 0x%06X' % (label_name, label_addr))
 						
 					params.append(label_addr)
+				
+				elif (w[:1] == '$') and (w[1:] in self.labels):	# Accept "$.something"
+					params.append(self.labels[w[1:]])
+				elif w in self.labels:	# Accept ANY previously defined label
+					params.append(self.labels[w])
 				else:
 					# Remember "as-is"
 					params.append(w)
@@ -365,7 +379,15 @@ class CR16B_Assembler:
 			# Handle mnemonics
 			#self.put('%s	%s' % (mnem, str(params)))
 			
-			if mnem == 'db':
+			# Some non-CPU directives
+			if mnem[:1] == '.':
+				#@TODO: Implement some of  them?
+				# .text
+				# .align
+				# .globl
+				self.put_debug('Ignoring directive "%s"' % mnem)
+				
+			elif mnem == 'db':
 				# Define byte(s)
 				for p in params:
 					if type(p) is int:
@@ -380,9 +402,9 @@ class CR16B_Assembler:
 				# Pad until given address
 				d = params[0] - pc
 				if d < 0:
-					self.put('Invalid padding! Already beyond the given address (0x%06X > 0x%06X)!' % (pc, params[0]))
+					raise ValueError('Invalid offset! We are already beyond the given address (0x%06X > 0x%06X)!' % (pc, params[0]))
 				else:
-					self.put('Padding %d bytes until offset 0x%06X...' % (d, params[0]))
+					self.put_debug('Padding %d bytes until offset 0x%06X...' % (d, params[0]))
 					for _ in range(d): self.w8(0x00)
 				
 			elif (len(words) > 1) and (words[1] == 'equ'):
@@ -390,6 +412,7 @@ class CR16B_Assembler:
 				self.labels[words[0]] = params[2]
 				
 			
+			# CR16B instructions
 			elif mnem == 'nop':
 				self.assemble_nop()
 			
@@ -467,6 +490,7 @@ class CR16B_Assembler:
 				self.assemble_popret(count=params[0], reg=str_to_reg(params[1]))
 			
 			elif mnem == 'bal':
+				#@TODO Make sure params[1] is a valid number
 				self.assemble_bal(disp21=params[1] - pc, lnk_pair=str_to_reg(params[0][1:-1].split(',')[1]))
 			
 			
@@ -1036,9 +1060,9 @@ def test_manual_assembly():
 def test_text_parser():
 	"""Assemble using a text listing"""
 	
-	asm = CR16B_Assembler(pc=0x200)
+	asm = CR16B_Assembler()
 	asm.assemble("""
-	foo:
+	.foo:
 		movw $0xb700, sp
 		push $2, r0
 		movd    $0x189E91, (r5,r4)	; 9E91 = "Achtung! Kassette beenden! (J/N)?"
@@ -1048,8 +1072,8 @@ def test_text_parser():
 		cmpb    $0x1, r0
 		bne     0x22c
 		
-		br :foo
-	""")
+		br .foo
+	""", pc=0x200)
 	asm.dump()
 
 
@@ -1086,16 +1110,16 @@ def run_patch():
 	
 	# Add some strings
 	#@TODO: Use assembly for that: "ofs 0xXXXX" and "db 'something'"
-	patch_file(filename_dst, ofs=0x0c00, data=b'HotKey was here!\x00')
-	patch_file(filename_dst, ofs=0x0c40, data=b'HACKED!\x00')
+	#patch_file(filename_dst, ofs=0x0c00, data=b'HotKey was here!\x00')
+	#patch_file(filename_dst, ofs=0x0c40, data=b'HACKED!\x00')
 	
 	
 	# Patch all potential entry points
 	#ofs = 0x000200
-	ofs = 0
+	ofs = 0	# We byte-bang the full header of the "Update Cart" ROM
 	
 	text = """
-; Cartridge header
+; Cartridge header (VTECHCARTRIDGE, ONBOARDCARTRIDGE, TESTHWCART)
 	db      'VTECHCARTRIDGE'
 	db      0x00, 0x00
 	db      0xed, 0x01
@@ -1116,81 +1140,154 @@ def run_patch():
 	db      0x00, 0x00, 0x04, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04
 	db      0x00, 0x00, 0x03, 0x00, 0x02, 0x00
 	
-; Some strings
-ofs 0x100
-str_hello:
+
+; DATA: Const data
+ofs 0x180
+.str_hello:
 	db      'Hello world!',0x00
-str_htk:
+.str_htk:
 	db      'HotKey was truly here!',0x00
 
-; Actual code (at offset 0x200)
-ofs 0x200
-main:
+
+; TEXT: Actual code (at offset 0x200)
+ofs 0x200	; Hard-coded entry point when invoking the cartridge
+_main:
 	push    $2, era
 	
-start:
-	
-	; Delay
-	movw    $0x7ff0, r0
-delay_loop:
-	nop
-	nop
-	nop
-	nop
-	subw    $1, r0
-	cmpw    $0, r0
-	bne     :delay_loop
+.start:
 	
 	
-	; Show a prompt
+	; For some reason the dialogs aren't visible in main menu.
+	; However, just enter the FileManager before pressing the cartridge button.
+	
+	
+	
+	; Show a prompt (Y/N)
 	movd    $0x034191, (r1,r0)	; Dunno what this param does...
 	push    $2, r0
 	
 	;OK!	movd    $0x100B18, (r5,r4)	; 00B18 = STRING "028100"
-	;OK!	movd    $0x100c40, (r3,r2)	; my own string
-	;OK!	movd    $0x100c00, (r5,r4)	; my own string
-	movd    :str_hello, (r3,r2)
-	adduw   $0x10, r3	; Cartridge ROM
-	movd    :str_htk, (r5,r4)
-	adduw   $0x10, r5	; Cartridge ROM
+	;OK!	movd    $0x100c40, (r3,r2)	; my own patched string with added ROM base offset (0x100000)
+	;OK!	movd    $0x100c00, (r5,r4)	; my own patched string with added ROM base offset (0x100000)
+	movd    .str_hello, (r3,r2)	; Use our own constant
+	adduw   $0x10, r3	; Add the cartridge ROM base address (0x100000)
+	movd    .str_htk, (r5,r4)	; Use our own constant
+	adduw   $0x10, r5	; Add the cartridge ROM base address (0x100000)
 	
-	bal     (ra,era), 0x1805C4	; prompt_yesno__title_r3r2__text_r5r4__sys5c4
+	bal     (ra,era), 0x1805C4	; prompt_yesno__title_r3r2__text_r5r4__sys5c4 (0x0005C4 + internal ROM offset 0x180000)
 	adduw   $0x4, sp
 	
-	; Check result
+	; Check the result in r0
 	cmpb    $0x1, r0	; 1 = YES, 0 = NO
-	;beq     :start	; Back to start
-	beq     :end	; Exit out
+	beq     .start	; Back to start
+	;beq     .end	; Exit out
 	
 	
-	; Show a info popup
-	movd    $0x034191, (r1,r0)
+	; Show an alert
+	;	027908:	12 64 71 51	6412 5171	movd    $0x035171, (r1,r0)
+	;	02790C:	F8 23      	23F8     	adduw   $-0x8, sp
+	;	02790E:	1E E4      	E41E     	storw   r0, 0x4(sp)
+	;	027910:	3E E6      	E63E     	storw   r1, 0x6(sp)
+	;	027912:	1F 78      	781F     	movw    sp, r0
+	;	027914:	11 22 32 00	2211 0032	adduw   $0x32, r0
+	;	027918:	20 38      	3820     	movw    $0, r1
+	;	02791A:	1E E0      	E01E     	storw   r0, 0(sp)
+	;	02791C:	3E E2      	E23E     	storw   r1, 0x2(sp)
+	;	02791E:	81 18      	1881     	movb    $0x01, r4
+	;	...
+	;	02793E:	48 64 D7 98	6448 98D7	movd    $0x0898D7, (r3,r2)	; 0x0898D7 = STRING "Alarm"
+	;	027942:	BE 77 D7 13	77BE 13D7	bal     (ra,era), 0x018D18
+	;	027946:	E8 23      	23E8     	adduw   $0x8, sp
+	;	027948:	BC 77 DD 8A	77BC 8ADD	bal     (ra,era), 0x000424
+	
+	movd    $0x035171, (r1,r0)	; Dunno what this param does
+	adduw   $-0x8, sp
+	storw   r0, 0x4(sp)
+	storw   r1, 0x6(sp)
+	movw    sp, r0
+	adduw   $0x32, r0
+	movw    $0, r1
+	storw   r0, 0(sp)
+	storw   r1, 0x2(sp)
+	movb    $0x01, r4
+	
+	;movd    $0x0898D7, (r3,r2)	; 0x0898D7 = STRING "Alarm"
+	movd    .str_htk, (r3,r2)	; Use our own constant
+	adduw   $0x10, r3	; Add the cartridge ROM base address (0x100000)
+	
+	bal     (ra,era), 0x198D18	; 0x018D18 + 0x180000
+	adduw   $0x8, sp
+	bal     (ra,era), 0x180424	; 0x000424 + 0x180000
+	
+	
+	
+	; Show a popup
+	movd    $0x034191, (r1,r0)	; Dunno what this param does
 	adduw   $-0x8, sp
 	storw   r0, 0x4(sp)
 	storw   r1, 0x6(sp)
 	
-	;movd    $0x18AB57, (r1,r0)	; AB57 = "Schuetzt die Erde!"
-	;movd    0x100AD2, (r1,r0)	; 00AD2 = STRING "Update Programm-Zusatzkassette"
-	movd    0x100c00, (r1,r0)	; my own string
+	;???	movd    $0x18AB57, (r1,r0)	; AB57 = "Schuetzt die Erde!"
+	;???	movd    0x100AD2, (r1,r0)	; 00AD2 = STRING "Update Programm-Zusatzkassette"
+	;OK!	movd    0x100c00, (r1,r0)	; Use the patched-in string + base address (0x100000)
+	movd    .str_htk, (r1,r0)	; Use our own constant
+	adduw   $0x10, r1	; Add the cartridge ROM base address (0x100000)
+	
 	storw   r0, 0(sp)
 	storw   r1, 0x2(sp)
 	
 	movb    $0, r4
 	movd    $0x084D40, (r3,r2)	; Dunno what this param does
-	bal     (ra,era), 0x198CC4	; show_info_popup_r1r0 (0x018CC4)
+	bal     (ra,era), 0x198CC4	; show_info_popup_r1r0 (0x018CC4 + internal ROM offset 0x180000)
 	adduw   $0x8, sp
 	
 	
-end:
+	
+	; Ask for a string?
+	;	030D10:	12 64 91 41	6412 4191	movd    $0x034191, (r1,r0)
+	;	030D14:	F8 23      	23F8     	adduw   $-0x8, sp
+	;	030D16:	1E E4      	E41E     	storw   r0, 0x4(sp)
+	;	030D18:	3E E6      	E63E     	storw   r1, 0x6(sp)
+	;	030D1A:	08 64 75 9A	6408 9A75	movd    $0x089A75, (r1,r0)	; 0x089A75 = STRING "Gib deinen Namen ein!"
+	;	030D1E:	1E E0      	E01E     	storw   r0, 0(sp)
+	;	030D20:	3E E2      	E23E     	storw   r1, 0x2(sp)
+	;	030D22:	80 18      	1880     	movb    $0, r4
+	;	030D24:	48 64 C2 4F	6448 4FC2	movd    $0x084FC2, (r3,r2)
+	;	030D28:	AE 77 9D 7F	77AE 7F9D	bal     (ra,era), 0x018CC4	; show_info_popup_r1r0
+	;	030D2C:	7F B8 44 7D	B87F 7D44	loadw   0x07D44, r3
+	;	030D30:	9F B8 46 7D	B89F 7D46	loadw   0x07D46, r4
+	;	
+	
+	; Ask for a number?
+	;	031298:	48 64 7F 99	6448 997F	movd    $0x08997F, (r3,r2)	; 0x08997F = STRING "Zahleneingabe"
+	;	03129C:	BE 77 B9 EB	77BE EBB9	bal     (ra,era), 0x02FE54
+	
+
+.end:
 	; Exit/Reboot
 	;popret  $2, era
 	;pop  $2, era
 	;jump    (ra,era)
 	bal     (ra,era), 0x180000	; Reboot
 
-halt_loop:
-	br      :halt_loop
+
+.halt_loop:
+	br      .halt_loop
 	
+
+_delay:
+	push    $2, era
+	; Delay
+	movw    $0x7ff0, r0
+.delay_loop:
+	nop
+	nop
+	nop
+	nop
+	subw    $1, r0
+	cmpw    $0, r0
+	bne     .delay_loop
+	popret  $2, era
 	"""
 	
 	asm = CR16B_Assembler()
@@ -1200,15 +1297,37 @@ halt_loop:
 	put('Patching file at offset 0x%06X (%d bytes)...' % (ofs, len(bin)))
 	patch_file(filename_dst, ofs=ofs, data=bin)
 	
+	put('Patch done.')
+	
 
 
 if __name__ == '__main__':
 	
-	# Enable what to do, e.g. do assembler self-tests or actually try assembling and patching something
-	#test_manual_assembly()
-	#test_text_parser()
-	#test_instructions()
+	import sys
 	
-	run_patch()
+	if len(sys.argv) > 1:
+		filename = sys.argv[1]
+		ofs = 0
+		put('Loading "%s"...' % filename)
+		with open(filename, 'r') as h:
+			text = h.read()
+		
+		put('Assembling...')
+		asm = CR16B_Assembler()
+		bin = asm.assemble(pc=ofs, text=text)
+		
+		put('Dumping...')
+		asm.dump()
+	
+	else:
+		put('No argument given, running test(s)...')
+		
+		# Enable what to do, e.g. do assembler self-tests or actually try assembling and patching something
+		#test_manual_assembly()
+		test_text_parser()
+		#test_instructions()
+		
+		#run_patch()
+	
 	
 	# EOF

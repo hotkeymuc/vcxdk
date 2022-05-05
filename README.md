@@ -23,6 +23,7 @@ Goal is to have a simple way to compile ROM cartridges that can be run on any VT
 
 
 ## History
+* 2021-05-05 Successfully compiled and assembled a very basic C file, which then ran on real hardware!
 * 2021-05-01 We got code execution on a custom compiled ROM using the simple cr16b_asm assembler!
 * 2021-04-10 Got small EEPROMS, started on a bespoke simple assembler
 * 2021-03-25 Working on a development cartridge, but those 3.3V EEPROMs are quite finicky compared to those old 5V ones used with the Z80 models. Meanwhile, a "Computer Bit Communicator" arrived from bella Italia! Looks like a "Genius MASTER e-Power X", but comes with the RS232 level converter cable and "E-Mail" cartridge included. Nice. Also, totally love the italian speech. Ciao!

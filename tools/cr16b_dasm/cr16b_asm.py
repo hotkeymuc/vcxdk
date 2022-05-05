@@ -293,7 +293,8 @@ class CR16B_Assembler:
 			
 			self.put_debug('Parsing statement:	%06X	%s' % (pc, line))
 			
-			# Remember labels
+			# Remember labels and continue
+			# (These might start with ".", so check this case first. Or else they might get ignored as "ignored directive")
 			if line[-1:] == ':':
 				label_name = line[:-1]
 				
@@ -310,6 +311,7 @@ class CR16B_Assembler:
 				self.labels[label_name] = pc
 				continue
 			
+			
 			# lower case from now on
 			#line = line.lower()
 			
@@ -317,6 +319,10 @@ class CR16B_Assembler:
 			words = line.split(' ')
 			mnem = words[0].lower()
 			
+			# Ignore some "." directives (for now)
+			if mnem in ['.file', '.text', '.globl', '.align', '.section', '.code_label']:
+				self.put_debug('Ignoring directive "%s"' % mnem)
+				continue
 			
 			# Parse remainder
 			p = '' if len(words) < 2 else line[len(words[0])+1:]	#words[1]
@@ -327,9 +333,9 @@ class CR16B_Assembler:
 				#self.put_debug('"%s"' % p)
 				
 				# Find parameter delimiter
-				if p[:1] == "'":
+				if p[:1] in ['"', "'"]:
 					# String parameter - search for the end of it
-					o = p.index("'", 1)+1
+					o = p.index(p[:1], 1)+1
 					
 					if ',' in p[o:]:
 						o = p.index(',', o)
@@ -390,24 +396,27 @@ class CR16B_Assembler:
 			#self.put('%s	%s' % (mnem, str(params)))
 			
 			# Some non-CPU directives
-			if mnem[:1] == '.':
-				#@TODO: Implement some of  them?
-				# .text
-				# .align
-				# .globl
-				#self.put_debug('Ignoring directive "%s"' % mnem)
-				pass
-				
-			elif mnem == 'db':
+			
+			# Some of my own directives
+			if mnem in ['db', '.ascii']:
 				# Define byte(s)
 				for p in params:
 					if type(p) is int:
 						self.w8(p)
 					elif (type(p) is str) and (p[:1] == p[-1:]) and (p[:1] in ("'", '"')):
+						is_esc = False
 						for b in p[1:-1]:
+							if b == '\\':
+								is_esc = True
+								continue
+							if is_esc:
+								if b == '0': b = chr(0)
+								else: raise ParseError('Unknown escape in string: %s' % str(b))
+								is_esc = False
+							
 							self.w8(ord(b))
 					else:
-						self.put('Unknown parameter to db: "%s"?' % str(p))
+						self.put('Unknown parameter to db/ascii: "%s"?' % str(p))
 			
 			elif mnem == 'ofs':
 				# Pad until given address
@@ -439,7 +448,7 @@ class CR16B_Assembler:
 				# stor	imm	addr
 				# ...each as byte and word variant
 				# ...plus some special store with far addressing
-				i = str_to_format(mnem)
+				i = str_to_format(mnem)	# byte or word
 				
 				if mnem.startswith('load'):
 					# LOAD
@@ -1347,12 +1356,16 @@ if __name__ == '__main__':
 	
 	# Add the arguments
 	#argp.add_argument('--input', nargs='+', action='append', type=str, required=True, help='input file(s)')
+	argp.add_argument('--pad', nargs='?', action='store', type=int, help='pad output to given size')
+	argp.add_argument('--output', nargs='?', action='store', type=str, help='output file')
 	argp.add_argument(dest='input', nargs='+', action='append', type=str, help='input file(s)')
 	
 	# Execute the parse_args() method
 	args = argp.parse_args()
 	
 	input_filenames = args.input[0]
+	output_filename = args.output
+	pad = args.pad
 	
 	ofs = 0
 	text = ''
@@ -1365,8 +1378,16 @@ if __name__ == '__main__':
 	asm = CR16B_Assembler()
 	bin = asm.assemble(pc=ofs, text=text)
 	
-	put('Dumping...')
-	asm.dump()
+	if output_filename is None:
+		put('Dumping (stdout)...')
+		asm.dump()
+	else:
+		
+		with open(output_filename, 'wb') as h:
+			h.write(bin)
+			if pad is not None:
+				l = pad - len(bin)
+				h.write(bytes([0] * l))
 	
 	
 	# EOF

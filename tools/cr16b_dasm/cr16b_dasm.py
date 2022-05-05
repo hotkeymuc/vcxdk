@@ -12,7 +12,8 @@ Check against MAME:
 	mame -debug -rompath /z/apps/_emu/_roms gl8008cx
 
 BUG:
-	* "ashuw" does not resolve correctly: Should result in -15..15, not "$65521"
+	* "ashuw" seems to not resolve correctly: Should result in -15..15, not "$65521"
+		e.g. at 0017C0:	91 28 F1 FF	2891 FFF1	ashuw   $65521, r4
 
 
 2022-02-23 Bernhard "HotKey" Slawik
@@ -21,105 +22,16 @@ BUG:
 RS232_ADDR = 0xFB90
 ROM_OFFSET = 0x80000	# Where in address space is the first ROM byte located? I think 0x80000+
 
+
+# Those are just speculation for now and are used to make some memory accesses "pop out" in the disassembly
 KNOWN_ADDRS = {
-	# GL8008CX:
-	0x020E: 'CODE: SHUTDOWN',
+	#0x020E: 'CODE: SHUTDOWN',	# on GL8008CX:
 	
-	0x77FF: '?SYS?: 77FF',
-	0x7800: '?SYS?: 7800',
-	0x7803: '?SYS?: 7803',
-	0x789C: '?VAR?: 789C',
-	0x7F80: '?SYS?: 7F80',
-	0x7FEF: '?SYS?: 7FEF',
-	0x7FF0: '?SYS?: 7FF0',
-	0x7FFF: '?SYS?: 7FFF',
-	0x8000: '?SYS?: 8000',
-	0xB700: 'GLCX:SP',
-	0xB800: 'GLCX:ISR',
-	0xBFF0: '?SYS?: BFF0',
-	
-	0xF900: '?SYS?: F900',
-	0xF902: '?SYS?: F902',
-	0xF904: '?SYS?: F904',
-	0xF906: '?SYS?: F906',
-	0xF908: '?SYS?: F908',
-	0xF90A: '?SYS?: F90A',
-	0xF90C: '?SYS?: F90C',
-	0xF90E: '?SYS?: F90E',
-	0xF910: '?SYS?: F910',
-	0xF912: '?SYS?: F912',
-	0xF914: '?SYS?: F914',
-	0xF916: '?SYS?: F916',
-	0xF918: '?SYS?: F918',
-	0xF91a: '?SYS?: F91a',
-	0xF91c: '?SYS?: F91c',
-	0xF91e: '?SYS?: F91e',
-	0xF920: '?SYS?: F920',
-	0xF922: '?SYS?: F922',
-	0xF924: '?SYS?: F924',
-	0xF926: '?SYS?: F926',
-	0xF928: '?SYS?: F928',
-	0xF92a: '?SYS?: F92a',
-	0xF92c: '?SYS?: F92c',
-	0xF92e: '?SYS?: F92e',
-	0xF930: '?SYS?: F930',
-	
-	0xFC60: '?SYS?: FC60 (write 0xc0)',
-	0xFCC0: '?SYS?: FCC0 (write 0, w flags.3)',
-	0xFCC2: '?SYS?: FCC2 (write 0, w flags.3)',
-	0xFCC4: '?SYS?: FCC4 (read byte?)',
-	
-	0xFD00: '?SYS?: FD00',
-	0xFD0A: '?SYS?: FD0A (write 0)',
-	0xFD10: '?SYS?: FD10',
-	0xFD20: '?SYS?: FD20 (w flags.5.6)',
-	0xFD80: '?SYS?: FD80 (write 0)',
-	
-	0xFDA4: '?SYS?: FDA4 (write 0)',	# see code at 014BB8
-	0xFDA6: '?SYS?: FDA6 (write 0 with ints disabled)',	# see code at boot4/03E8BE
-	
-	0xFDC0: '?SYS?: FDC0 (write 0)',	# see 037CBE
-	0xFDC2: '?SYS?: FDC2 (write 0)',	# see 037CCC
-	0xFDC4: '?SYS?: FDC4 (read byte)',	# see 037DC0
-	
-	# THOSE SEEM IMPORTANT! See code 03934E
-	0xFDE0: '?SYS?: FDE0 ! (write 0,1,2,3)',	# see 0393BC
-	0xFDE2: '?SYS?: FDE2 ! (write 0,E,F)',	# see 0393BC
-	0xFDE4: '?SYS?: FDE4 ! (write C)',	# see 0393BC
-	0xFDE6: '?SYS?: FDE6 ! (read / write data)',	# see 0393BC
-	
-	0xFE0E: '?SYS?: FE0E (write byte)',
-	0xFE10: '?SYS?: FE10 (write byte)',
-	0xFEE0: '?SYS?: FEE0 (w flags.7, write byte, read byte)',
-	0xFEE2: '?SYS?: FEE2 (w flags.7, read byte, write 0)',
-	0xFEE4: '?SYS?: FEE4',
-	0xFEE6: '?SYS?: FEE6 (flags.7)',
-	0xFEE8: '?SYS?: FEE8 (read byte)',
-	
-	0xFF00: '?SYS?: FF00 (w flags.4.5, write 0, read byte)',
-	0xFF02: '?SYS?: FF02 (w flags.4.5, write 0)',
-	0xFF04: '?SYS?: FF04 (read byte)',
-	0xFF06: '?SYS?: FF06 (w flags.7, read byte)',
-	0xFF08: '?SYS?: FF08 (w flags.4.5.7, read byte)',
-	0xFF0A: '?SYS?: FF0A',
-	0xFF0C: '?SYS?: FF0C',
-	0xFF0E: '?SYS?: FF0E',
-	
-	0xFFEF: '?SYS?: FFEF',
-	0xFFF0: '?SYS?: FFF0',
-	0xFFF1: '?SYS?: FFF1',
-	0xFFF6: '?SYS?: FFF6',
-	0xFFFF: '?SYS?: FFFF',
+	0xB700: 'GL8008CX:SP',
+	0xB800: 'GL8008CX:ISR',
 	
 	# Load strings externally. It's too many of them.
 	ROM_OFFSET: 'ROM_OFFSET',
-	#ROM_OFFSET + 0x9DD7: 'TXT: "Zusatzkassette fehlt!" (1)',
-	#ROM_OFFSET + 0x9E25: 'TXT: "Speicherkassette eingelegt!"',
-	#ROM_OFFSET + 0x9E3C: 'TXT: "Spielekassette eingelegt!"',
-	#ROM_OFFSET + 0x9E65: 'TXT: "Zusatzkassette fehlt!" (2)',
-	#ROM_OFFSET + 0x9E7B: 'TXT: "Zusatzkassette bereit"',
-	
-	
 	
 	# boardCR16.h:
 	0xD700: 'TMON_START',
@@ -1156,118 +1068,31 @@ if __name__ == '__main__':
 	SHOW_BYTES = True
 	SHOW_WORDS = True
 	SHOW_ASM = True
-	ADDRESS_START = 0x040000
+	ADDRESS_START = 0x200	#0x040000
 	ADDRESS_STOP = ADDRESS_START + 0x010000
 	
 	import sys
-	#put('argv=' + str(sys.argv))
+	
+	"""
+	import argparse
+	argp = argparse.ArgumentParser(description='Disassemble binary into CR16B assembly')
+	
+	# Add the arguments
+	#argp.add_argument('--input', nargs='+', action='append', type=str, required=True, help='input file(s)')
+	#argp.add_argument('--output', nargs='?', action='store', type=str, help='output file')
+	argp.add_argument(dest='input', nargs='1', action='append', type=str, help='input filename')
+	
+	# Execute the parse_args() method
+	args = argp.parse_args()
+	
+	input_filename = args.input
+	"""
 	
 	if len(sys.argv) < 2:
 		
-		#ROM_FILENAME = 'ROM_GL5005X_27-6426-00.u1'
-		#ROM_FILENAME = 'ROM_GBrainStation_5505X_27-7006-00.u5'
-		#ROM_FILENAME = 'ROM_GL6600CX_54-06400-00.u1'
-		#ROM_FILENAME = 'ROM_GL8008CX_27-6393-11.u1'
-		#ROM_FILENAME = 'CART_GL8008CX_Update.dump.000.seg0-64KB__4KB_used.bin'
 		ROM_FILENAME = 'CART_GL8008CX_Update.dump.000.seg1-64KB__4KB_used.bin'
 		ADDRESS_START = 0x0
-		#ADDRESS_START = 0x00b000
-		#ADDRESS_START = 0x80000
-		#ADDRESS_START = 0x180300	# Sys calls?
-		#ADDRESS_STOP = 0x180600
-		
-		# Cartridge:
-		#	0x009DD7 = "Zusatzkassette fehlt!" (1)
-		#	0x009E25 = "Speicherkassette eingelegt!"
-		#	0x009E3C = "Spielekassette eingelegt!"
-		#	0x009E65 = "Zusatzkassette fehlt!" (2)
-		#				0x1DEE2
-		#	0x009E7B = "Zusatzkassette bereit"
-		#				0x01df3e
-		#	!!!	ADDRESS_START = 0x01df3e - 0xe - 0x80	# Block at 0x01df32 calls 0x02Fa8a (and overall-success if r0=0)
-		#ADDRESS_START = 0x02Fa8a	# ... which branches to 0x0008cc (jumptable to 0x036982) ...
-		#ADDRESS_START = 0x036982	#0x0008cc is just a br      0x036982 - dynamic jump 
-		
-		#				0x07105e
-		#				0x1575b0
-		#				0x15b103
-		#				0x165be1
-		#				0x17a991
-		#				0x1eac27
-		#ADDRESS_START = 0xa67a0	# XX Usage of "Zusatzkassette fehlt" (9dd7) used at a67b4
-		#ADDRESS_START = 0x18a722	# XX Usage of "Zusatzkassette fehlt" (9dd7)
-		#ADDRESS_START = 0x1DEE2 - 0x40
-		#ADDRESS_STOP = ADDRESS_START + 0x40000	#0x200
 		ADDRESS_STOP = ADDRESS_START + 0x01000
-		#ADDRESS_STOP = ADDRESS_START + 0xA80
-		
-		# PC-Link:
-		#ADDRESS_START = 0x16b10 - 0x200	# Usage of all error strings (e.g. 3 PC-Link strings at ~0x16b00 (A096="PC-Link wird aufgebaut", A0B1="PC-Link nicht moeglich", A0C8="Aufbau-Fehler", A0D6="Verbindungsfehler"))
-		#ADDRESS_STOP = 0x16cb8
-		
-		"""
-		ROM_FILENAME = 'CART_GLCX_UPDATE_PROGRAMM-ZUSATZKASSETTE.dumped.003.bin'
-		ADDRESS_START = 0x000400
-		ADDRESS_STOP = 0x000BB0
-		"""
-		"""
-			Firmware ROM:
-				"Zusatzkassette fehlt"
-				0x9dd7	x2: 0xa67b4: "0e 30 46 b4 77 D7 9D", 0x18a730: "d9 34 17 35 c0 9f 5b D7 9D"
-				0x9e65	x5: 0x1dee4: "1e e4 3e e6 08 64 65 9E cc 4f", odd+table:"1d 60 04 97 65 9e 6c 00 00"
-			
-			
-		"""
-		"""
-			Cart ROM:
-				0b2e: "Update Programm-Zusatzkassette"
-				block at 0400:
-				05d6:	   "fd 80 66 2E 0B 71 38 47 00"
-				0600:	   "fd 80 66 2E 0B 71 38 20 00"
-				0612:	"f0 00 40 66 2E 0B be 77 09 fe 21"
-					0005D4:	80 66 2E 0B	6680 0B2E	movd    $0x100B2E, (r5,r4)
-					0005D8:	71 38 47 00	3871 0047	movw    $0x0047, r3
-					0005DC:	CA 43      	43CA     	br      0x000606
-					
-					0005DE:	80 66 74 0B	6680 0B74	movd    $0x100B74, (r5,r4)
-					0005E2:	5F 78      	785F     	movw    sp, r2
-					0005E4:	51 22 20 00	2251 0020	adduw   $0x20, r2
-					0005E8:	60 38      	3860     	movw    $0, r3
-					0005EA:	B6 77 AF FE	77B6 FEAF	bal     (ra,era), 0x180498
-					
-					0005EE:	00 2E      	2E00     	cmpw    $0, r0
-					0005F0:	28 44      	4428     	bne     0x000638
-					0005F2:	80 18      	1880     	movb    $0, r4
-					0005F4:	5F 78      	785F     	movw    sp, r2
-					0005F6:	4C 22      	224C     	adduw   $0xC, r2
-					0005F8:	60 38      	3860     	movw    $0, r3
-					0005FA:	B6 77 4B FD	77B6 FD4B	bal     (ra,era), 0x180344
-					
-					0005FE:	80 66 2E 0B	6680 0B2E	movd    $0x100B2E, (r5,r4)
-					000602:	71 38 32 00	3871 0032	movw    $0x0032, r3
-					000606:	47 79      	7947     	movw    r3, r10
-					000608:	0B 79      	790B     	movw    r5, r8
-					00060A:	E9 78      	78E9     	movw    r4, r7
-					00060C:	31 39 F0 00	3931 00F0	movw    $0x00F0, r9
-					000610:	40 66 2E 0B	6640 0B2E	movd    $0x100B2E, (r3,r2)
-					000614:	BE 77 09 FE	77BE FE09	bal     (ra,era), 0x00041C
-					
-					000618:	21 7F      	7F21     	subw    r0, r9
-					00061A:	13 78      	7813     	movw    r9, r0
-					00061C:	22 38      	3822     	movw    $0x0002, r1
-					00061E:	A8 77 D9 0B	77A8 0BD9	bal     (ra,era), 0x1811F6
-					
-					000622:	41 78      	7841     	movw    r0, r2
-					000624:	8F 78      	788F     	movw    r7, r4
-					000626:	B1 78      	78B1     	movw    r8, r5
-					000628:	75 78      	7875     	movw    r10, r3
-					00062A:	B6 77 53 FD	77B6 FD53	bal     (ra,era), 0x18037C
-					
-					00062E:	51 38 C8 00	3851 00C8	movw    $0x00C8, r2
-					000632:	B6 77 13 FE	77B6 FE13	bal     (ra,era), 0x180444
-		
-		"""
-		
 		#ROM_FILENAME = 'test_in.hex'
 		#ROM_FILENAME = 'test_all.hex'
 	else:
@@ -1303,6 +1128,7 @@ if __name__ == '__main__':
 	while pc < ADDRESS_STOP:
 		
 		r = dasm.disassemble(stream, pc, opcodes)
+		
 		#put('r = 0x%04X' % r)
 		if not (r & SUPPORTED):
 			put('NOT SUPPORTED! Quitting...')
@@ -1332,6 +1158,8 @@ if __name__ == '__main__':
 			put('End of data!')
 			break
 	
+	
+	# Address usage statistics
 	put('-'*40)
 	put('Addresses:')
 	for addr, uses in sorted(dasm.addrs_found.items()):

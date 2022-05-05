@@ -232,12 +232,18 @@ class CR16B_Assembler:
 			pass_num += 1
 			self.put('Pass #%d...' % pass_num)
 			bin_old = bin
-			bin = self._assemble(text=text, pc=pc)
+			bin, unresolved = self._assemble(text=text, pc=pc)
+			
+			put('Labels: %s' % str(self.labels))
 			
 			# Check if the binary has changed (i.e. another forward-label has been resolved)
 			#self.put_debug(' '.join(['%02X'%b for b in bin]))
 			if bin == bin_old:
 				self.put('Output has converged after %d(-1) passes!' % pass_num)
+				
+				if len(unresolved) > 0:
+					raise NameError('Finished, but there are unresolvable identifiers left: %s' % str(unresolved))
+					
 				break
 			
 			self.put_debug('Output is still changing. Need to do another pass to verify')
@@ -246,6 +252,7 @@ class CR16B_Assembler:
 		
 		if pass_num >= MAX_PASS_NUM:
 			raise RuntimeError('Too many passes! (%d)' % pass_num)
+		
 		
 		return bin
 	
@@ -258,6 +265,7 @@ class CR16B_Assembler:
 		else:
 			self.pc = pc
 		
+		unresolved = []	#0
 		#pc_start = pc
 		
 		line_num = 0
@@ -295,8 +303,9 @@ class CR16B_Assembler:
 						self.put('Label "%s" is already known, but changed from 0x%06X to pc=0x%06X...' % (label_name, self.labels[label_name], pc))
 					#else:
 					#	self.put_debug('Label "%s" is already known and steady at 0x%06X...' % (label_name, self.labels[label_name]))
-				else:
-					self.put('Remembering new label "%s" as 0x%06X...' % (label_name, pc))
+				#else:
+				#	# Not yet known
+				#	self.put('Remembering new label "%s" as 0x%06X...' % (label_name, pc))
 				
 				self.labels[label_name] = pc
 				continue
@@ -358,10 +367,11 @@ class CR16B_Assembler:
 						#label_addr = 0x1fffff	# Assume far address
 						label_addr = pc + 0x10	# Assume short branch
 						self.put('(Yet) unknown label "%s" at line #%d, pc=0x%06X. Using dummy 0x%06X' % (label_name, line_num, pc, label_addr))
-						
+						#unresolved += 1
+						unresolved.append(label_name)
 					else:
 						label_addr = self.labels[label_name]
-						self.put_debug('Label "%s" resolved to 0x%06X' % (label_name, label_addr))
+						#self.put_debug('Label "%s" resolved to 0x%06X' % (label_name, label_addr))
 						
 					params.append(label_addr)
 				
@@ -385,7 +395,8 @@ class CR16B_Assembler:
 				# .text
 				# .align
 				# .globl
-				self.put_debug('Ignoring directive "%s"' % mnem)
+				#self.put_debug('Ignoring directive "%s"' % mnem)
+				pass
 				
 			elif mnem == 'db':
 				# Define byte(s)
@@ -521,7 +532,7 @@ class CR16B_Assembler:
 			
 		#
 		
-		return self.stor.get_bytes()
+		return self.stor.get_bytes(), unresolved
 	
 	def assemble_nop(self):
 		self.w16(0x0200)
@@ -1300,26 +1311,13 @@ _delay:
 	put('Patch done.')
 	
 
-
 if __name__ == '__main__':
+	
 	
 	import sys
 	
-	if len(sys.argv) > 1:
-		filename = sys.argv[1]
-		ofs = 0
-		put('Loading "%s"...' % filename)
-		with open(filename, 'r') as h:
-			text = h.read()
-		
-		put('Assembling...')
-		asm = CR16B_Assembler()
-		bin = asm.assemble(pc=ofs, text=text)
-		
-		put('Dumping...')
-		asm.dump()
-	
-	else:
+	"""
+	if len(sys.argv) < 2:
 		put('No argument given, running test(s)...')
 		
 		# Enable what to do, e.g. do assembler self-tests or actually try assembling and patching something
@@ -1328,6 +1326,47 @@ if __name__ == '__main__':
 		#test_instructions()
 		
 		#run_patch()
+		
+		sys.exit()
+	"""
+	
+	"""
+	import getopt
+	short_options = "c:s:hv"
+	long_options  = ["config=", "suggestions=", "help", "version"]
+	
+	try:
+		opts, args = getopt.getopt(sys.argv[1:], short_options, long_options)
+	except getopt.GetoptError, err:
+		print str(err)
+		sys.exit(1)
+	"""
+	
+	import argparse
+	argp = argparse.ArgumentParser(description='Compile CR16B assembly')
+	
+	# Add the arguments
+	#argp.add_argument('--input', nargs='+', action='append', type=str, required=True, help='input file(s)')
+	argp.add_argument(dest='input', nargs='+', action='append', type=str, help='input file(s)')
+	
+	# Execute the parse_args() method
+	args = argp.parse_args()
+	
+	input_filenames = args.input[0]
+	
+	ofs = 0
+	text = ''
+	for input_filename in input_filenames:
+		put('Loading input file "%s"...' % input_filename)
+		with open(input_filename, 'r') as h:
+			text += h.read() + '\n\n'
+	
+	put('Assembling...')
+	asm = CR16B_Assembler()
+	bin = asm.assemble(pc=ofs, text=text)
+	
+	put('Dumping...')
+	asm.dump()
 	
 	
 	# EOF

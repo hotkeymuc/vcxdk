@@ -1,6 +1,6 @@
 #	National Semiconductor Corporation
 #	CompactRISC CR16 C Compiler Version 3.1 (revision 5)
-#	-- test.s --	Fri May 06 01:16:42 2022
+#	-- test.s --	Fri May 06 11:58:30 2022
 #
 # cc1 compilation options:
 #

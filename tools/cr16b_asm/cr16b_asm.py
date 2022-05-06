@@ -57,34 +57,44 @@ def str_to_format(t):
 
 # The op value changes according to format (e.g. w/cw/uw)
 # u = +1, c = +8
-OP_ADD = 0b0000	# addX
-OP_ADDU = 0b0001	# adduX
-OP_ADDC = 0b1001	# addcX
-OP_SUB = 0b1111	# subX
-OP_SUBU = 0b0110	# subuX
-OP_SUBC = 0b1101	# subcX
-OP_CMP = 0b0111
-OP_MOV = 0b1100	# movX
+OP_ADD  = 0b00000	# addX
+OP_ADDU = 0b00001	# adduX
+OP_ADDC = 0b01001	# addcX
+OP_SUB  = 0b01111	# subX
+OP_SUBU = 0b00110	# subuX
+OP_SUBC = 0b01101	# subcX
+OP_CMP  = 0b00111
+OP_MOV  = 0b01100	# movX
 OP_MOVZ = 0b10101	# movzX - kinda special...
 
+OP_AND = 0b11000
+OP_OR  = 0b01110
+OP_XOR = 0b00110
+OP_LSH = 0b00101
+
 OP_PUSH = 0b0110
-OP_POP = 0b0110	# Same as PUSH! But param differs
+OP_POP  = 0b0110	# Same as PUSH! But param differs
 OP_POPRET = 0b0110	# Same as PUSH! But param differs
 
 # List of basic 3-letter mnemonics that can be all handled the same way
 OP_BASICS = {
-	'mov': OP_MOV,
+	'mov' : OP_MOV,
 	'movz': OP_MOVZ,
 	
-	'add': OP_ADD,
+	'add' : OP_ADD,
 	'addu': OP_ADDU,
 	'addc': OP_ADDC,
 	
-	'sub': OP_SUB,
+	'sub' : OP_SUB,
 	'subu': OP_SUBU,
 	'subc': OP_SUBC,
 	
-	'cmp': OP_CMP,
+	'cmp' : OP_CMP,
+	
+	'and' : OP_AND,
+	'or'  : OP_OR,
+	'xor' : OP_XOR,
+	'lsh' : OP_LSH,
 }
 
 REG_R0 = 0
@@ -164,13 +174,15 @@ def str_is_num(t):
 	elif (t[:4] == '$-0x'): return True
 	elif (t[:2] == '$-') and (t[2:].isnumeric()): return True
 	elif (t[:1] == '$') and (t[1:].isnumeric()): return True
+	elif (t[:1] == '-') and (t[1:].isnumeric()): return True
 	elif (t[:2] == '0x'): return True
 	return t.isnumeric()
 
 def str_to_num(t):
 	if   (t[:3] == '$0x'): return int(t[1:], 16)
-	elif (t[:4] == '$-0x'): return 0x10000 - int(t[2:], 16)
+	elif (t[:4] == '$-0x'): return -int(t[2:], 16)	#0x10000 - int(t[2:], 16)
 	elif (t[:1] == '$'): return int(t[1:])
+	elif (t[:1] == '-'): return -int(t[1:])
 	elif (t[:2] == '0x'): return int(t,16)
 	return int(t)
 
@@ -291,7 +303,7 @@ class CR16B_Assembler:
 			# Ignore full-line comments
 			if line[:1] == '#': continue
 			
-			self.put_debug('Parsing statement:	%06X	%s' % (pc, line))
+			self.put_debug('Parsing:	%06X	%s' % (pc, line))
 			
 			# Remember labels and continue
 			# (These might start with ".", so check this case first. Or else they might get ignored as "ignored directive")
@@ -368,6 +380,10 @@ class CR16B_Assembler:
 				#elif (w[:1] == ':'):
 				#	label_name = w[1:]
 				elif (w[:1] in ['.', '_']):	# Assume ".foo" and "_bar" to be a defined symbols
+					
+					#@FIXME: Better resolve labels when accessing them, not before
+					#@FIXME: Some mnemonics INTRODUCE a new identifier. Let them handle it
+					
 					label_name = w
 					if not label_name in self.labels:
 						#label_addr = 0x1fffff	# Assume far address
@@ -393,7 +409,7 @@ class CR16B_Assembler:
 				p = p[o+1:]
 			
 			# Handle mnemonics
-			#self.put('%s	%s' % (mnem, str(params)))
+			self.put_debug('Handling:	%s	%s' % (mnem, str(params)))
 			
 			# Some non-CPU directives
 			
@@ -417,6 +433,15 @@ class CR16B_Assembler:
 							self.w8(ord(b))
 					else:
 						self.put('Unknown parameter to db/ascii: "%s"?' % str(p))
+			
+			elif mnem == '.word':
+				self.w16((0x10000 + params[0]) % 0x10000)
+			elif mnem == '.byte':
+				self.w8((0x10000 + params[0]) % 0x100)
+			
+			elif mnem == '.set':
+				label_name, label_value = words[1].split(',')
+				self.labels[label_name] = int(label_value)
 			
 			elif mnem == 'ofs':
 				# Pad until given address
@@ -570,8 +595,9 @@ class CR16B_Assembler:
 		#@FIXME: Need to check unsigned/signed
 		
 		#@FIXME: According to the manual the only allowed values for imm5 are: -16, -14...15 (note: no -15 !)
-		if abs(imm) < 16:
-			if imm < 0: imm = 0x10 - imm
+		self.put_debug('imm=%d' % imm)
+		if abs(imm) < 0x10:
+			if imm < 0: imm = 0x20 + imm
 			self.assemble_basic_imm_reg_short(op, i, imm, dest_reg)
 		else:
 			self.assemble_basic_imm_reg_medium(op, i, imm, dest_reg)
@@ -864,7 +890,8 @@ def assert_assembly(text, bin, pc=0x0000):
 	put('Checking "%06X	%s" =?= %s' % (pc, text, ' '.join([ '%02X' % b for b in bin]) ))
 	
 	asm = CR16B_Assembler()
-	bin2 = asm.assemble(text, pc=pc)
+	#bin2 = asm.assemble(text, pc=pc)
+	bin2, _ = asm._assemble(text, pc=pc)	# Only single pass needed
 	#asm.dump()
 	
 	assert len(bin) == len(bin2), 'Assembled binary sizes differs!\nAsserted: %s\nProduced: %s' % (' '.join([ '%02X' % b for b in bin]), ' '.join([ '%02X' % b for b in bin2]))
@@ -882,6 +909,39 @@ def test_instructions():
 	
 	# Test: 0001A6:	00 02      	0200     	nop
 	assert_assembly('nop', [0x00, 0x02])
+	
+	
+	# Test: 001084:	28 2A      	2A28     	lshw    $8, r1
+	assert_assembly('lshw    $8, r1', [0x28, 0x2a])
+	# Test: 00116E:	BF 2A      	2ABF     	lshw    $-1, r5
+	assert_assembly('lshw    $-1, r5', [0xbf, 0x2a])
+	# Test: 0011E4:	DF 2A      	2ADF     	lshw    $-1, r6
+	assert_assembly('lshw    $-1, r6', [0xdf, 0x2a])
+	# Test: 0010E2:	17 2A      	2A17     	lshw    $-9, r0
+	assert_assembly('lshw    $-9, r0', [0x17, 0x2a])
+	# Test: 001A90:	75 6B      	6B75     	lshw    r10, r11
+	assert_assembly('lshw    r10, r11', [0x75, 0x6b])
+	
+	
+	# Test: 0010E4:	0B 6C      	6C0B     	xorw    r5, r0
+	assert_assembly('xorw    r5, r0', [0x0b, 0x6c])
+	
+	# Test: 00149E:	91 30 00 80	3091 8000	andw    $0x8000, r4
+	assert_assembly('andw    $0x8000, r4', [0x91, 0x30, 0x00, 0x80])
+	# Test: 0014AA:	71 30 7F 00	3071 007F	andw    $0x007F, r3
+	assert_assembly('andw    $0x007F, r3', [0x71, 0x30, 0x7f, 0x00])
+	# Test: 0018A4:	51 31 FF 07	3151 07FF	andw    $0x07FF, r10
+	assert_assembly('andw    $0x07FF, r10', [0x51, 0x31, 0xff, 0x07])
+	# Test: 0018A8:	EF 30      	30EF     	andw    $0x000F, r7
+	assert_assembly('andw    $0x000F, r7', [0xef, 0x30])
+	
+	# Test: 0018AE:	F1 1C 10 00	1CF1 0010	orb     $0x10, r7
+	assert_assembly('orb     $0x10, r7', [0xf1, 0x1c, 0x10, 0x00])
+	# Test: 0018B8:	13 7D      	7D13     	orw     r9, r8
+	assert_assembly('orw     r9, r8', [0x13, 0x7d])
+	# Test: 001A68:	01 3D      	3D01     	orw     $0x0001, r8
+	assert_assembly('orw     $0x0001, r8', [0x01, 0x3d])
+	
 	
 	
 	#@TODO: Implement! Including relative addresses!
@@ -965,6 +1025,8 @@ def test_instructions():
 	assert_assembly('addub   $0x1, r0', [0x01, 0x02])
 	# Test: 001094:	89 60      	6089     	addw    r4, r4
 	assert_assembly('addw    r4, r4', [0x89, 0x60])
+	# Test: 001900:	11 20 00 08	2011 0800	addw    $0x800, r0
+	assert_assembly('addw    $0x800, r0', [0x11, 0x20, 0x00, 0x08])
 	# Test: 001F14:	31 22 00 10	2231 1000	adduw   $0x1000, r1
 	assert_assembly('adduw   $0x1000, r1', [0x31, 0x22, 0x00, 0x10])
 	# Test: 001F18:	40 32      	3240     	addcw   $0, r2
@@ -983,6 +1045,7 @@ def test_instructions():
 	assert_assembly('subw    $0x1, r5', [0xA1, 0x3E])
 	# Test: 00204C:	C0 3A      	3AC0     	subcw   $0, r6
 	assert_assembly('subcw   $0, r6', [0xc0, 0x3a])
+	
 	
 	
 	# Test BAL
@@ -1325,19 +1388,19 @@ if __name__ == '__main__':
 	
 	import sys
 	
-	"""
+	
 	if len(sys.argv) < 2:
 		put('No argument given, running test(s)...')
 		
 		# Enable what to do, e.g. do assembler self-tests or actually try assembling and patching something
 		#test_manual_assembly()
-		test_text_parser()
-		#test_instructions()
+		#test_text_parser()
+		test_instructions()
 		
 		#run_patch()
 		
 		sys.exit()
-	"""
+	
 	
 	"""
 	import getopt
@@ -1356,8 +1419,9 @@ if __name__ == '__main__':
 	
 	# Add the arguments
 	#argp.add_argument('--input', nargs='+', action='append', type=str, required=True, help='input file(s)')
-	argp.add_argument('--pad', nargs='?', action='store', type=int, help='pad output to given size')
-	argp.add_argument('--output', nargs='?', action='store', type=str, help='output file')
+	argp.add_argument('--pad', '-p', action='store', type=int, help='pad output to given size')
+	argp.add_argument('--verbose', '-v', action='count', default=0, help='verbose output')
+	argp.add_argument('--output', '-o', nargs='?', action='store', type=str, help='output file')
 	argp.add_argument(dest='input', nargs='+', action='append', type=str, help='input file(s)')
 	
 	# Execute the parse_args() method
@@ -1366,6 +1430,11 @@ if __name__ == '__main__':
 	input_filenames = args.input[0]
 	output_filename = args.output
 	pad = args.pad
+	verbose = args.verbose
+	
+	if verbose == 0:
+		# Disable put_debug()
+		put_debug = lambda t: t
 	
 	ofs = 0
 	text = ''

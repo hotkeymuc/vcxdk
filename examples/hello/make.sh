@@ -3,7 +3,6 @@
 INPUT_BASENAME=test
 
 CR16TOOLSET_PATH=../../tools/CR16toolset
-CR16TOOLSET_PATH_WINE=..\\..\\tools\\CR16toolset
 CR16BASM_PATH=../../tools/cr16b_asm
 
 
@@ -15,7 +14,7 @@ echo Cleaning...
 
 
 # Compile
-echo Compiling C file "${INPUT_BASENAME}.c"...
+echo Compiling \"${INPUT_BASENAME}.c\"...
 
 #	CompactRISC CR16 C Compiler Release 3.1 (revision 5)
 #	Usage: crcc [ [-flag] | [file] | [@argfile]  ] ... 
@@ -94,8 +93,17 @@ echo Compiling C file "${INPUT_BASENAME}.c"...
 # crcc -mlarge -Wextra %INPUTNAME%.c
 
 # Wine passes exported environment variables over
-export CRDIR=${CR16TOOLSET_PATH_WINE}
-wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -Wextra -S -n ${INPUT_BASENAME}.c
+# Create a backslash-version of the toolset path
+export CRDIR=${CR16TOOLSET_PATH//\//\\}
+
+# Call the compiler using Wine
+wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -Wextra -c -S -n ${INPUT_BASENAME}.c
+
+CRCC_RESULT=$?
+if [ $CRCC_RESULT -ne 0 ]; then
+	echo Compilation failed. Stopping make.
+	exit $CRCC_RESULT
+fi
 
 
 #echo Disassembling using my own disasm...
@@ -103,7 +111,7 @@ wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -Wextra -S -n ${INPUT_BASENAME}.c
 
 
 # Assemble binary
-echo Assembling "${INPUT_BASENAME}.bin"...
+echo Assembling \"${INPUT_BASENAME}.bin\"...
 # Turn the generated assembly into a binary file
 python3 ${CR16BASM_PATH}/cr16b_asm.py --output ${INPUT_BASENAME}.bin --pad 8192 cart_header.asm ${INPUT_BASENAME}.s
 

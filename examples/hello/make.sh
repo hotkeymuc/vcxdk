@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 
-INPUT_BASENAME=test
+INPUT_BASENAME=hello
 
 CR16TOOLSET_PATH=../../tools/CR16toolset
 CR16BASM_PATH=../../tools/cr16b_asm

@@ -1,3 +1,5 @@
+; This file can be pre-pended to generate a working VTech Genius CX cartridge
+
 ; Cartridge header (VTECHCARTRIDGE, ONBOARDCARTRIDGE, TESTHWCART)
 	db      'VTECHCARTRIDGE'
 	db      0x00, 0x00
@@ -22,11 +24,11 @@
 
 
 ; DATA: Const data
-ofs 0x180
-.str_hello:
-	db      'Hello world!',0x00
-.str_htk:
-	db      'HotKey was here!',0x00
+;ofs 0x180
+;.str_hello:
+;	db      'Hello world!',0x00
+;.str_htk:
+;	db      'HotKey was here!',0x00
 
 ; Define some symbols we need for a successful compile
 .rdata_2:

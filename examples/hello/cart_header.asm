@@ -43,6 +43,7 @@ ofs 0x200	; Hard-coded entry point when invoking the cartridge
 	br _main
 
 
+; Some trials agains VTech Genius Leader 8008 CX [de]
 ;	; Show a prompt (Y/N)
 ;	movd    $0x034191, (r1,r0)	; Dunno what this param does...
 ;	push    $2, r0

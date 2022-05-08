@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 INPUT_BASENAME=test
 
@@ -113,6 +113,7 @@ fi
 # Assemble binary
 echo Assembling \"${INPUT_BASENAME}.bin\"...
 # Turn the generated assembly into a binary file
+#python3 ${CR16BASM_PATH}/cr16b_asm.py --verbose --output ${INPUT_BASENAME}.bin cart_header.asm ${INPUT_BASENAME}.s
 python3 ${CR16BASM_PATH}/cr16b_asm.py --output ${INPUT_BASENAME}.bin --pad 8192 cart_header.asm ${INPUT_BASENAME}.s
 
 

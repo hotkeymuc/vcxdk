@@ -31,16 +31,16 @@
 ;	db      'HotKey was here!',0x00
 
 ; Define some symbols we need for a successful compile
-.rdata_2:
-
+;.rdata_2:
+;
 ;_printf:
 ;	push $2, era
 ;	popret $2, era
 
-
 ; TEXT: Actual code (at offset 0x200)
 ofs 0x200	; Hard-coded entry point when invoking the cartridge
-	br _main
+	;br _main	; Only for short jump
+	bal	(ra,era),_main
 
 
 ; Some trials agains VTech Genius Leader 8008 CX [de]

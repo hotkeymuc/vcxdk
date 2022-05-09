@@ -57,6 +57,184 @@
 0b00 = 13 00 00 00
 0b40 = 13 00 00 00
 0bc0 = (crashed!)
+
+...
+
+40.. = FF FC 3F F0 00 00 3F F0 4F F0 00 00 FF F0 ... 00 00 00 ..
+
+...
+
+6xxx = 00
+
+70.. = 00
+71.. = 00
+72.. = 00
+73.. = 00
+
+7400 = 48x FF, c0, 00, 01, c0, 00 ...
+7440 = 37x 00, 55, 54, c5, 55....
+7480 = 6F, FE, 55, 55, 55, 55, ... 5E, D5, 55, 55, 55, 55, ...
+74C0 = FF, FF, FF, 55, 55, 78, B5, ED, 55, 55, 40, 00, 05, 55, 56, FF... AA, AA, AA, AA, A8, ....
+
+75.. = static values, around 55 and FF
+76.. = static values, around 55, AA and 00 and FF
+
+77.. = 00
+77C0 = 00 and static values
+
+
+7800 = NICE VALUES! Touch Pad coordinates!
+	7810: accessed in timer INT at 038D80
+	7812: accessed in timer INT at 038D80
+	
+	Counter: Incremented by INT at ROM 038D24
+	7814 = counter (LOWL, fast change)
+	7815 = counter (LOWH, ~2 changes per second)
+	7816 = counter (HIGHL, slow change)
+	7817 = counter (HIGHH)
+	7818: compared against 0x00
+	781A: compared against 0x16
+	
+	7820/7822 = X-coordinate (low on the right, high on the left)
+	7821/7823 = Y-coordinate
+	7818/7824 = 00/01 if touch down
+
+7840 = 00s and a single one (7847)
+7880 = 00s and a single one (789C)
+
+78C0 = Keyboard state!
+	78C3-78C9: keyboard buffer (16 bit)?!?!
+	78CF: current IN index in buffer; used by ROM (sys3c8)	037B2C:	1F D8 CF 78	D81F 78CF	storb   r0, 0x078CF
+	78D0: current OUT index in buffer; used by ROM (sys3c8)	037B28:	1F D8 D0 78	D81F 78D0	storb   r0, 0x078D0
+	
+	78CB: current KEYDOWN SCAN CODE (FF if none)
+		
+		5E = SoftKey: "E-Mail"
+		5D = SoftKey 5 "Kunststudio"
+		5C = "3"
+		5B = "E"
+		5A = "S"
+		59 = "X"
+		58 = ANSWER/PRINT
+		
+		56 = SoftKey "System"
+		55 = SoftKey 6 "Hausaufgabenhilfe"
+		54 = "2"
+		53 = "W"
+		52 = "A"
+		51 = "Y" (de)
+		50 = PLAYER/BOOKMARK
+		
+		
+		4E = SoftKey "MagiCam"
+		4D = SoftKey "Demo"
+		4C = "1"
+		4B = "Q"
+		4A = ???unused???
+		49 = ???unused???
+		48 = LEVEL/SYMBOL
+		
+		46 = SoftKey "Kassette"
+		45 = SoftKey "Drucker"
+		44 = ESC
+		43 = TAB
+		42 = CAPSLOCK
+		41 = SHIFT LEFT
+		40 = PLAYER1/HELP
+		
+		
+		3E = INSERT/DELETE
+		3D = "'" (de) / "`" / "^"
+		3C = "Ss" (de) / "?" / "\\"
+		3B = "Ue" (de)
+		3A = "Oe" (de)
+		39 = "-" / "_"
+		38 = SHIFT RIGHT
+		
+		36 = ENTER
+		35 = "+" / "*" / "~"
+		34 = "0"
+		33 = "P"
+		32 = "L"
+		31 = "." / ":" / ">"
+		30 = CURSOR RIGHT / Player2 / End
+		
+		
+		2E = BACKSPACE
+		2D = "Ae" (de)
+		2C = "9"
+		2B = "O"
+		2A = "K"
+		29 = ","/";", "<"
+		28 = CURSOR DOWN / Page Down
+		
+		26 = TouchPad Button LEFT
+		25 = CURSOR UP / Page Up
+		24 = "8"
+		23 = "I"
+		22 = "J"
+		21 = "M"
+		20 = CURSOR LEFT / Home
+		
+		
+		1E = Touchpad Button RIGHT
+		1D = SoftKey 4 "Logik & Spiele"
+		1C = "7"
+		1B = "U"
+		1A = "H"
+		19 = "N"
+		18 = REPEAT
+		
+		16 = SoftKey 2 "Mathematik"
+		15 = SoftKey 1 "Wortspiele"
+		14 = "6"
+		13 = "Z" (de)
+		12 = "G"
+		11 = "B"
+		10 = ALT RIGHT
+		
+		
+		0E = POWER ON
+		0D = POWER OFF
+		0C = "5"
+		0B = "T"
+		0A = "F"
+		09 = "V"
+		08 = SPACE
+		
+		06 = SoftKey 6 "Computerpraxis"
+		05 = SoftKey 3 "Quiz-Fragen"
+		04 = "4"
+		03 = "R"
+		02 = "D"
+		01 = "C"
+		00 = CONTROL LEFT
+		
+		FF=none
+		
+	
+	7960: used by ROM (sys5a0)
+	7962: used by ROM (sys5a0)
+
+7980 = 00
+7A.. = 00 and a few statics
+7B.. = 00 and a few statics
+7C.. = 00 and a few statics
+
+7D00
+	7D15: used by ROM (sys5a0)
+	7D16: Mouse button pressed; used by ROM (sys5a0)
+	7D18: used by ROM (sys5a0)
+
+7D40 = 00 and static vars
+7D80 = 00 and static vars
+7DC0 = 00 and static vars
+7E.. = 00 and static vars
+
+7F.. = 00
+
+8000 = 00
+
 ...
 
 
@@ -89,6 +267,12 @@ FC40 (jittery): counts slowly up while fingers are on touchpad?!
 FCC0 (jittery): reacts to touch
 
 FD00 (jittery): like FC00
+	FD20 used by ROM: 038CAC:	1F 98 20 FD	981F FD20	loadb   0x0FD20, r0	; and 0xF8
+	FD22 used by ROM: 038CB6:	1F 98 22 FD	981F FD22	loadb   0x0FD22, r0	; and 0xFA
+	FD24 used by ROM: ~038CB6 and timer INT
+	FD26 used by ROM: ~038CB6 and timer INT
+	FD28 used by ROM: ~038CB6
+	
 FD40 (jittery): like FC40
 FD80 (jittery): 00, but reacts to touch
 FDC0 (jittery): like FC40
@@ -100,6 +284,7 @@ FEC0 = static values
 
 FF00 = HARD CRASH!
 FF40 = happy values and FF 00.
+	FF60-FF70 used by ROM: 038C84:	D2 04 68 FF	04D2 FF68	storb   $0x9, 0x0FF68
 FF80 = flashing 01 00
 FFC0 = flashing 01 00
 
@@ -247,6 +432,7 @@ int prompt_from_rom(__far char *title, __far char *text) {
 	
 }
 #pragma reset_options()
+#define prompt(t) prompt_from_rom((__far char *)&STR_TITLE, (__far char *)t)
 
 
 //const char HEXTABLE[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -426,7 +612,61 @@ void main(void) {
 		mem(SCREEN_BUFFER + i) = 0x00;
 	}
 	
-	p = 0xf800;
+	p = 0x8000;
+	if (prompt("Start 0x8000-0xFFFF") == 1) {
+		// 0x8000 - 0xFFFF
+		if (prompt("Start 0xC000-0xFFFF") == 1) {
+			// 0xC000 - 0xFFFF
+			if (prompt("Start 0xE000-0xFFFF") == 1) {
+				p = 0xe000;
+			} else {
+				p = 0xc000;
+			}
+		} else {
+			// 0x8000 - 0xBFFF
+			if (prompt("Start 0xA000-0xBFFF") == 1) {
+				p = 0xa000;
+			} else {
+				p = 0x8000;
+			}
+		}
+	} else {
+		// 0x0000 - 0x7FFF
+		if (prompt("Start 0x4000-0x7FFF") == 1) {
+			// 0x4000 - 0x7FFF
+			if (prompt("Start 0x6000-0x7FFF") == 1) {
+				// 0x6000 - 0x7FFF
+				//p = 0x6000;
+				if (prompt("Start 0x7000-0x7FFF") == 1) {
+					//p = 0x7000;
+					if (prompt("Start 0x7800-0x7FFF") == 1) {
+						p = 0x7800;	// 7800 = the most interesing bits!
+					} else {
+						p = 0x7000;
+					}
+				} else {
+					p = 0x6000;
+				}
+			} else {
+				// 0x4000 - 0x5FFF
+				if (prompt("Start 0x5000-0x5FFF") == 1) {
+					p = 0x5000;
+				} else {
+					p = 0x4000;
+				}
+			}
+		} else {
+			// 0x0000 - 0x3FFF
+			if (prompt("Start 0x2000-0x3FFF") == 1) {
+				p = 0x2000;
+			} else {
+				p = 0x0000;
+			}
+		}
+	}
+	
+	
+	
 	
 	while(1) {
 		
@@ -435,7 +675,7 @@ void main(void) {
 		y = 0;
 		draw_hex16(0, 0, p);
 		
-		if (prompt_from_rom((__far char *)&STR_TITLE, (__far char *)"Monitor those addresses?") == 1) {
+		if (prompt("Monitor those addresses?") == 1) {
 			// Monitor for a few frames
 			
 			// Draw labels

@@ -65,12 +65,17 @@ OP_SUBU = 0b00110	# subuX
 OP_SUBC = 0b01101	# subcX
 OP_CMP  = 0b00111
 OP_MOV  = 0b01100	# movX
+OP_MOVX = 0b10100	# movxX
 OP_MOVZ = 0b10101	# movzX - kinda special...
 
 OP_AND = 0b11000
 OP_OR  = 0b01110
 OP_XOR = 0b00110
 OP_LSH = 0b00101
+OP_ASHU = 0b00100	# ashuX
+
+OP_MUL = 0b00011
+#OP_MULS = 0b00011
 
 OP_PUSH = 0b0110
 OP_POP  = 0b0110	# Same as PUSH! But param differs
@@ -79,6 +84,7 @@ OP_POPRET = 0b0110	# Same as PUSH! But param differs
 # List of basic 3-letter mnemonics that can be all handled the same way
 OP_BASICS = {
 	'mov' : OP_MOV,
+	#'movx': OP_MOVX,
 	'movz': OP_MOVZ,
 	
 	'add' : OP_ADD,
@@ -89,12 +95,17 @@ OP_BASICS = {
 	'subu': OP_SUBU,
 	'subc': OP_SUBC,
 	
+	'mul' : OP_MUL,
+	#'muls': OP_MULS,
+	
 	'cmp' : OP_CMP,
 	
 	'and' : OP_AND,
 	'or'  : OP_OR,
 	'xor' : OP_XOR,
+	
 	'lsh' : OP_LSH,
+	'ashu' : OP_ASHU,
 }
 
 REG_R0 = 0
@@ -190,6 +201,7 @@ class CR16B_Assembler:
 	def __init__(self):
 		self.stor = DataStore()
 		self.pc = 0
+		self.align = 2
 		self.labels = {}
 	
 	def put(self, t):
@@ -214,6 +226,14 @@ class CR16B_Assembler:
 	def w32(self, v32):
 		self.stor.w32(v32)
 		self.pc += 4
+	def pad_to_alignment(self, a=None):
+		"""Pad to given alignment"""
+		al = self.align if a is None else a
+		if (self.pc % al) != 0:
+			put_debug('Padding...')
+			while (self.pc % al) != 0:
+				self.w8(0x00)
+		
 	def get_data(self):
 		return self.stor.get_data()
 	
@@ -246,7 +266,7 @@ class CR16B_Assembler:
 			bin_old = bin
 			bin, unresolved = self._assemble(text=text, pc=pc)
 			
-			put('Labels: %s' % str(self.labels))
+			#put('Labels: %s' % str(self.labels))
 			
 			# Check if the binary has changed (i.e. another forward-label has been resolved)
 			#self.put_debug(' '.join(['%02X'%b for b in bin]))
@@ -255,7 +275,8 @@ class CR16B_Assembler:
 				
 				if len(unresolved) > 0:
 					raise NameError('Finished, but there are unresolvable identifiers left: %s' % str(unresolved))
-					
+				
+				put('Labels: %s' % str(self.labels))
 				break
 			
 			self.put_debug('Output is still changing. Need to do another pass to verify')
@@ -332,7 +353,7 @@ class CR16B_Assembler:
 			mnem = words[0].lower()
 			
 			# Ignore some "." directives (for now)
-			if mnem in ['.file', '.text', '.globl', '.align', '.section', '.code_label']:
+			if mnem in ['.file', '.text', '.section', '.code_label', '.globl']:
 				self.put_debug('Ignoring directive "%s"' % mnem)
 				continue
 			
@@ -433,15 +454,21 @@ class CR16B_Assembler:
 							self.w8(ord(b))
 					else:
 						self.put('Unknown parameter to db/ascii: "%s"?' % str(p))
-			
+				#self.pad_to_alignment()
+			elif mnem == '.align':
+				self.pad_to_alignment(params[0])
 			elif mnem == '.word':
 				self.w16((0x10000 + params[0]) % 0x10000)
 			elif mnem == '.byte':
 				self.w8((0x10000 + params[0]) % 0x100)
-			
+				#self.pad_to_alignment()
 			elif mnem == '.set':
 				label_name, label_value = words[1].split(',')
 				self.labels[label_name] = int(label_value)
+			#elif mnem == '.globl':
+			#	label_name = words[1]
+			#	#self.put_debug('Remembering .globl "%s" as 0x%06X' % (label_name, pc))
+			#	self.labels[label_name] = pc
 			
 			elif mnem == 'ofs':
 				# Pad until given address
@@ -460,6 +487,12 @@ class CR16B_Assembler:
 			# CR16B instructions
 			elif mnem == 'nop':
 				self.assemble_nop()
+			elif mnem == 'di':
+				self.w16(0x7dde)
+			elif mnem == 'ei':
+				self.w16(0x7dfe)
+			elif mnem == 'wait':
+				self.w16(0x7ffe)
 			
 			# SBIT,CBIT, TBIT, STORi $imm4, X
 			elif mnem in ('storb', 'loadb', 'storw', 'loadw'):
@@ -512,6 +545,11 @@ class CR16B_Assembler:
 				src_reg = str_to_reg(params[0])
 				dest_reg = str_to_reg(params[1])
 				self.assemble_basic_reg_reg(op=OP_MOVZ, i=I_BYTE, src_reg=src_reg, dest_reg=dest_reg, op2=0)
+				
+			elif mnem == 'movxb':
+				src_reg = str_to_reg(params[0])
+				dest_reg = str_to_reg(params[1])
+				self.assemble_basic_reg_reg(op=OP_MOVX, i=I_BYTE, src_reg=src_reg, dest_reg=dest_reg, op2=0)
 			
 			elif mnem[:-1] in OP_BASICS:
 				# Handle all "basic" mnemonics the same way
@@ -595,8 +633,8 @@ class CR16B_Assembler:
 		#@FIXME: Need to check unsigned/signed
 		
 		#@FIXME: According to the manual the only allowed values for imm5 are: -16, -14...15 (note: no -15 !)
-		self.put_debug('imm=%d' % imm)
-		if abs(imm) < 0x10:
+		#self.put_debug('imm=%d' % imm)
+		if (imm == -16) or (imm >= -14 and imm <= 15):
 			if imm < 0: imm = 0x20 + imm
 			self.assemble_basic_imm_reg_short(op, i, imm, dest_reg)
 		else:
@@ -910,38 +948,40 @@ def test_instructions():
 	# Test: 0001A6:	00 02      	0200     	nop
 	assert_assembly('nop', [0x00, 0x02])
 	
-	
-	# Test: 001084:	28 2A      	2A28     	lshw    $8, r1
-	assert_assembly('lshw    $8, r1', [0x28, 0x2a])
-	# Test: 00116E:	BF 2A      	2ABF     	lshw    $-1, r5
-	assert_assembly('lshw    $-1, r5', [0xbf, 0x2a])
-	# Test: 0011E4:	DF 2A      	2ADF     	lshw    $-1, r6
-	assert_assembly('lshw    $-1, r6', [0xdf, 0x2a])
-	# Test: 0010E2:	17 2A      	2A17     	lshw    $-9, r0
-	assert_assembly('lshw    $-9, r0', [0x17, 0x2a])
-	# Test: 001A90:	75 6B      	6B75     	lshw    r10, r11
-	assert_assembly('lshw    r10, r11', [0x75, 0x6b])
+	# Test: 0001C4:	DE 7D      	7DDE     	di
+	assert_assembly('di', [0xde, 0x7d])
+	# Test: 0001D0:	FE 7D      	7DFE     	ei
+	assert_assembly('ei', [0xfe, 0x7d])
+	# Test: 00020C:	FE 7F      	7FFE     	wait
+	assert_assembly('wait', [0xfe, 0x7f])
 	
 	
-	# Test: 0010E4:	0B 6C      	6C0B     	xorw    r5, r0
-	assert_assembly('xorw    r5, r0', [0x0b, 0x6c])
+	# Test: 02A6EC:	06 26      	2606     	mulw    $0x6, r0
+	assert_assembly('mulw    $0x6, r0', [0x06, 0x26])
+	# Test: 0026B6:	2A 26      	262A     	mulw    $0xA, r1
+	assert_assembly('mulw    $0xA, r1', [0x2a, 0x26])
+	# Test: 0154D4:	65 26      	2665     	mulw    $0x5, r3
+	assert_assembly('mulw    $0x5, r3', [0x65, 0x26])
+	# Test: 000A22:	B0 26      	26B0     	mulw    $-0x10, r5
+	assert_assembly('mulw    $-0x10, r5', [0xb0, 0x26])
+	# Test: 0012A2:	61 66      	6661     	mulw    r0, r3
+	assert_assembly('mulw    r0, r3', [0x61, 0x66])
 	
-	# Test: 00149E:	91 30 00 80	3091 8000	andw    $0x8000, r4
-	assert_assembly('andw    $0x8000, r4', [0x91, 0x30, 0x00, 0x80])
-	# Test: 0014AA:	71 30 7F 00	3071 007F	andw    $0x007F, r3
-	assert_assembly('andw    $0x007F, r3', [0x71, 0x30, 0x7f, 0x00])
-	# Test: 0018A4:	51 31 FF 07	3151 07FF	andw    $0x07FF, r10
-	assert_assembly('andw    $0x07FF, r10', [0x51, 0x31, 0xff, 0x07])
-	# Test: 0018A8:	EF 30      	30EF     	andw    $0x000F, r7
-	assert_assembly('andw    $0x000F, r7', [0xef, 0x30])
+	#@FIXME: Support this special case:
+	#	# Test: 00279E:	04 63      	6304     	mulsw   r2, (r9,r8)
+	#	assert_assembly('mulsw   r2, (r9,r8)', [0x04, 0x63])
+	#	
+	#	# Test: 0041E4:	02 7E      	7E02     	muluw   r1, (r1,r0)
+	#	assert_assembly('muluw   r1, (r1,r0)', [0x02, 0x7e])
 	
-	# Test: 0018AE:	F1 1C 10 00	1CF1 0010	orb     $0x10, r7
-	assert_assembly('orb     $0x10, r7', [0xf1, 0x1c, 0x10, 0x00])
-	# Test: 0018B8:	13 7D      	7D13     	orw     r9, r8
-	assert_assembly('orw     r9, r8', [0x13, 0x7d])
-	# Test: 001A68:	01 3D      	3D01     	orw     $0x0001, r8
-	assert_assembly('orw     $0x0001, r8', [0x01, 0x3d])
-	
+	# Test: 000A54:	99 29      	2999     	ashuw   $-7, r12
+	assert_assembly('ashuw   $-7, r12', [0x99, 0x29])
+	# Test: 0328AE:	05 68      	6805     	ashuw   r2, r0
+	assert_assembly('ashuw   r2, r0', [0x05, 0x68])
+	# Test: 01C770:	18 28      	2818     	ashuw   $-8, r0
+	assert_assembly('ashuw   $-8, r0', [0x18, 0x28])
+	# Test: 0017C0:	91 28 F1 FF	2891 FFF1	ashuw   $65521, r4
+	assert_assembly('ashuw   $65521, r4', [0x91, 0x28, 0xf1, 0xff])
 	
 	
 	#@TODO: Implement! Including relative addresses!
@@ -982,6 +1022,11 @@ def test_instructions():
 	assert_assembly('movzb   r1, r0', [0x02, 0x6a])
 	# Test: 0360CA:	C0 6A      	6AC0     	movzb   r0, r6
 	assert_assembly('movzb   r0, r6', [0xc0, 0x6a])
+	
+	# Test: 0027B2:	04 69      	6904     	movxb   r2, r8
+	assert_assembly('movxb   r2, r8', [0x04, 0x69])
+	# Test: 002DD0:	00 68      	6800     	movxb   r0, r0
+	assert_assembly('movxb   r0, r0', [0x00, 0x68])
 	
 	# Test MOVD
 	# Test: 000682:	00 66 98 09	6600 0998	movd    $0x100998, (r1,r0)
@@ -1045,6 +1090,36 @@ def test_instructions():
 	assert_assembly('subw    $0x1, r5', [0xA1, 0x3E])
 	# Test: 00204C:	C0 3A      	3AC0     	subcw   $0, r6
 	assert_assembly('subcw   $0, r6', [0xc0, 0x3a])
+	
+	# Test: 00149E:	91 30 00 80	3091 8000	andw    $0x8000, r4
+	assert_assembly('andw    $0x8000, r4', [0x91, 0x30, 0x00, 0x80])
+	# Test: 0014AA:	71 30 7F 00	3071 007F	andw    $0x007F, r3
+	assert_assembly('andw    $0x007F, r3', [0x71, 0x30, 0x7f, 0x00])
+	# Test: 0018A4:	51 31 FF 07	3151 07FF	andw    $0x07FF, r10
+	assert_assembly('andw    $0x07FF, r10', [0x51, 0x31, 0xff, 0x07])
+	# Test: 0018A8:	EF 30      	30EF     	andw    $0x000F, r7
+	assert_assembly('andw    $0x000F, r7', [0xef, 0x30])
+	
+	# Test: 0018AE:	F1 1C 10 00	1CF1 0010	orb     $0x10, r7
+	assert_assembly('orb     $0x10, r7', [0xf1, 0x1c, 0x10, 0x00])
+	# Test: 0018B8:	13 7D      	7D13     	orw     r9, r8
+	assert_assembly('orw     r9, r8', [0x13, 0x7d])
+	# Test: 001A68:	01 3D      	3D01     	orw     $0x0001, r8
+	assert_assembly('orw     $0x0001, r8', [0x01, 0x3d])
+	
+	# Test: 0010E4:	0B 6C      	6C0B     	xorw    r5, r0
+	assert_assembly('xorw    r5, r0', [0x0b, 0x6c])
+	
+	# Test: 001084:	28 2A      	2A28     	lshw    $8, r1
+	assert_assembly('lshw    $8, r1', [0x28, 0x2a])
+	# Test: 00116E:	BF 2A      	2ABF     	lshw    $-1, r5
+	assert_assembly('lshw    $-1, r5', [0xbf, 0x2a])
+	# Test: 0011E4:	DF 2A      	2ADF     	lshw    $-1, r6
+	assert_assembly('lshw    $-1, r6', [0xdf, 0x2a])
+	# Test: 0010E2:	17 2A      	2A17     	lshw    $-9, r0
+	assert_assembly('lshw    $-9, r0', [0x17, 0x2a])
+	# Test: 001A90:	75 6B      	6B75     	lshw    r10, r11
+	assert_assembly('lshw    r10, r11', [0x75, 0x6b])
 	
 	
 	

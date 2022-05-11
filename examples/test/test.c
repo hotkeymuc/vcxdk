@@ -1,55 +1,30 @@
 /*
-0000 = 00
-0040 = zeros and values
-0080 = 00
-00C0 = static values
 
-0100 = static values
-0140 = 16 static values, then FF
-0180 = some FF, then static values
-01C0 = static values and 00
+Low-level tests
+This is used to probe the compiler and the hardware.
+It was used to develop/reverse-engineer the low-level screen and keyboard routines.
 
-0200 = 00
-0240 = some low-value 16bit table
-0280 = continue
-02C0 = continue
+*/
 
-03.. = continue
-04.. = high static values
-05.. = high static values
-06.. = high static values
-07.. = high static values
-08.. = zeros and static values
+//#include <stdio.h>
 
-0900 = zeros and static values / hard crash!
-0940 = 13 00 00 00
-0980 = 13 00 00 00
-09c0 = 13 00 00 00
-0a.. = 13 00 00 00
-0b.. = 13 00 00 00
+#include <vcxdk.h>
 
-...
-
-40.. = FF FC 3F F0 00 00 3F F0 4F F0 00 00 FF F0 ... 00 00 00 ..
-
-...
-
-6... = 00
-
-70.. = 00
-71.. = 00
-72.. = 00
-73.. = 00
-7400 = 48x FF, c0, 00, 01, c0, 00 ...
-7440 = 37x 00, 55, 54, c5, 55....
-7480 = 6F, FE, 55, 55, 55, 55, ... 5E, D5, 55, 55, 55, 55, ...
-74C0 = FF, FF, FF, 55, 55, 78, B5, ED, 55, 55, 40, 00, 05, 55, 56, FF... AA, AA, AA, AA, A8, ....
-75.. = static values, around 55 and FF
-76.. = static values, around 55, AA and 00 and FF
-77.. = 00
-77C0 = 00 and static values
+#include <memory.h>
+#include <screen.h>
+#include <keyboard.h>
+//#include <ui.h>
 
 
+//#define mem(x) *(unsigned char *)(x)
+//#define bin(a,b,c,d,e,f,g,h) (a*128 + b*64 + c*32 + d*16 + e*8 + f*4 + g*2 + h)
+
+
+//__far const char STR_HELLO[] = "Hello, world!";
+__far const char STR_TITLE[] = "test.c!";
+
+
+/*
 7800 = NICE VALUES! Touch Pad coordinates!
 	7810: accessed in timer INT at 038D80
 	7812: accessed in timer INT at 038D80
@@ -76,115 +51,11 @@
 	78CF: current IN index in buffer; used by ROM (sys3c8)	037B2C:	1F D8 CF 78	D81F 78CF	storb   r0, 0x078CF
 	78D0: current OUT index in buffer; used by ROM (sys3c8)	037B28:	1F D8 D0 78	D81F 78D0	storb   r0, 0x078D0
 	
-	78CB: current SCAN CODE (FF if none)
-		
-		5E = SoftKey: "E-Mail"
-		5D = SoftKey 5 "Kunststudio"
-		5C = "3"
-		5B = "E"
-		5A = "S"
-		59 = "X"
-		58 = ANSWER/PRINT
-		
-		56 = SoftKey "System"
-		55 = SoftKey 6 "Hausaufgabenhilfe"
-		54 = "2"
-		53 = "W"
-		52 = "A"
-		51 = "Y" (de)
-		50 = PLAYER/BOOKMARK
-		
-		
-		4E = SoftKey "MagiCam"
-		4D = SoftKey "Demo"
-		4C = "1"
-		4B = "Q"
-		4A = ?unused?
-		49 = ?unused?
-		48 = LEVEL/SYMBOL
-		
-		46 = SoftKey "Kassette"
-		45 = SoftKey "Drucker"
-		44 = ESC
-		43 = TAB
-		42 = CAPSLOCK
-		41 = SHIFT LEFT
-		40 = PLAYER1/HELP
-		
-		
-		3E = INSERT/DELETE
-		3D = "'" (de) / "`" / "^"
-		3C = "Ss" (de) / "?" / "\\"
-		3B = "Ue" (de)
-		3A = "Oe" (de)
-		39 = "-" / "_"
-		38 = SHIFT RIGHT
-		
-		36 = ENTER
-		35 = "+" / "*" / "~"
-		34 = "0"
-		33 = "P"
-		32 = "L"
-		31 = "." / ":" / ">"
-		30 = CURSOR RIGHT / Player2 / End
-		
-		
-		2E = BACKSPACE
-		2D = "Ae" (de)
-		2C = "9"
-		2B = "O"
-		2A = "K"
-		29 = ","/";", "<"
-		28 = CURSOR DOWN / Page Down
-		
-		26 = TouchPad Button LEFT
-		25 = CURSOR UP / Page Up
-		24 = "8"
-		23 = "I"
-		22 = "J"
-		21 = "M"
-		20 = CURSOR LEFT / Home
-		
-		
-		1E = Touchpad Button RIGHT
-		1D = SoftKey 4 "Logik & Spiele"
-		1C = "7"
-		1B = "U"
-		1A = "H"
-		19 = "N"
-		18 = REPEAT
-		
-		16 = SoftKey 2 "Mathematik"
-		15 = SoftKey 1 "Wortspiele"
-		14 = "6"
-		13 = "Z" (de)
-		12 = "G"
-		11 = "B"
-		10 = ALT
-		
-		
-		0E = POWER ON
-		0D = POWER OFF
-		0C = "5"
-		0B = "T"
-		0A = "F"
-		09 = "V"
-		08 = SPACE
-		
-		06 = SoftKey 6 "Computerpraxis"
-		05 = SoftKey 3 "Quiz-Fragen"
-		04 = "4"
-		03 = "R"
-		02 = "D"
-		01 = "C"
-		00 = CONTROL LEFT
-		
-		FF=none
-		
+	78CB: current SCAN CODE (FF if none, 0x00 - 0x5e, without 7,f)
+	
 	78F4 used by ROM: 037EAA:	1F D8 F4 78	D81F 78F4	storb   r0, 0x078F4
 	78D1 used by ROM: 037EAE:	1F D8 D1 78	D81F 78D1	storb   r0, 0x078D1
 	
-
 	7960: used by ROM (sys5a0)
 	7962: used by ROM (sys5a0)
 
@@ -212,7 +83,6 @@
 8000 = 00
 
 ...
-
 
 F800 = 1F CA (flashing)
 F840 = 1F CA (flashing)
@@ -269,29 +139,25 @@ FF80 = flashing 01 00
 FFC0 = flashing 01 00
 
 */
-//#include <stdio.h>
-
-typedef unsigned char byte;
-typedef unsigned short word;
-typedef unsigned long int dword;
-
-#define mem(x) *(unsigned char *)(x)
-#define bin(a,b,c,d,e,f,g,h) (a*128 + b*64 + c*32 + d*16 + e*8 + f*4 + g*2 + h)
 
 
 //register int *foovar __asm__("r9");
+
 /*
-unsigned char *reserve_stack(unsigned int size) {
-	(void)size;	// Suppress warning of unused param
-	
-	// Parameter is in register R2
-	__asm__("subw r2, sp");	// Reserve r2 bytes on stack
-	__asm__("movw sp, r0");	// Remember address
-	__asm__("subw $-2, r0");	// Correct for auto-generated function epilogue (sp+2)
-	
-	// NOTE!
-	// "return X" statement intentionally omitted, because register r0 is already set and should remain as-is
-	// So ignore the warning "control reaches end of non-void function".
+void test_ui(void) {
+	// Call ui.h
+	//alert("Hello.");
+	//alert(&STR_TITLE);
+	alert((__far char *)&STR_TITLE);
+}
+*/
+
+/*
+void test_pointer(void) {
+	// Test CARTRIDGE_ROM_POINTER()
+	__far char *test = CARTRIDGE_ROM_POINTER(&STR_TITLE);
+	c = *(char *)test;
+	draw_glyph(0, 0, c);
 }
 */
 
@@ -335,54 +201,11 @@ int probe_mem(unsigned int addr) {
 
 
 
-// Those must be aligned properly (assembler takes care of this and adds trailing zero bytes)
-//__far const char STR_HELLO[] = "Hello, world!";
-__far const char STR_TITLE[] = "test.c!";
 
-#include "ui.h"
-#include "screen.h"
 
-//const char HEXTABLE[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-
-#include "keyboard.h"
-
-void main(void) {
-	int i, j, f;
-	word x, y;
-	char c;
-	byte v;
-	word p, p2;
-	
-	//alert("Hello.");
-	//alert(&STR_HELLO);
-	//alert((__far char *)&STR_HELLO);
-	
-	
-	/*
-	// Manually draw letter "A"
-	mem(SCREEN_BUFFER + 60*0 + 0) = bin(0,0, 0,0, 1,1, 1,1);	mem(SCREEN_BUFFER + 60*0 + 1) = bin(1,1, 0,0, 0,0, 0,0);
-	mem(SCREEN_BUFFER + 60*1 + 0) = bin(0,0, 1,1, 1,1, 0,0);	mem(SCREEN_BUFFER + 60*1 + 1) = bin(1,1, 1,1, 0,0, 0,0);
-	mem(SCREEN_BUFFER + 60*2 + 0) = bin(1,1, 1,1, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*2 + 1) = bin(0,0, 1,1, 1,1, 0,0);
-	mem(SCREEN_BUFFER + 60*3 + 0) = bin(1,1, 1,1, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*3 + 1) = bin(0,0, 1,1, 1,1, 0,0);
-	mem(SCREEN_BUFFER + 60*4 + 0) = bin(1,1, 1,1, 1,1, 1,1);	mem(SCREEN_BUFFER + 60*4 + 1) = bin(1,1, 1,1, 1,1, 0,0);
-	mem(SCREEN_BUFFER + 60*5 + 0) = bin(1,1, 1,1, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*5 + 1) = bin(0,0, 1,1, 1,1, 0,0);
-	mem(SCREEN_BUFFER + 60*6 + 0) = bin(1,1, 1,1, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*6 + 1) = bin(0,0, 1,1, 1,1, 0,0);
-	mem(SCREEN_BUFFER + 60*7 + 0) = bin(0,0, 0,0, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*7 + 1) = bin(0,0, 0,0, 0,0, 0,0);
-	*/
-	/*
-	// Draw a few iconic symbols
-	draw_glyph(16 +  0, 0, 219);	// all black
-	draw_glyph(16 +  8, 0, 177);	// pattern 01010101
-	draw_glyph(16 + 16, 0, 219);	// all black
-	draw_glyph(16 + 24, 0, 16);	// Triangle to right
-	draw_glyph(16 + 32, 0, 219);	// all black
-	draw_glyph(16 + 40, 0, 219);	// all black
-	draw_glyph(16 + 48, 0, 92);	// Backslash
-	draw_glyph(16 + 56, 0, 219);	// all black
-	draw_glyph(16 + 64, 0, 179);	// VLine 2 bit wide
-	draw_glyph(16 + 72, 0, 219);	// all black
-	*/
-	
+/*
+void test_ascii(void) {
+	// Draw ASCII table
 	x = 0;
 	y = 0;
 	for(i = 0; i < 256; i++) {
@@ -398,148 +221,22 @@ void main(void) {
 			}
 		}
 	}
+}
+*/
+
+
+/*
+void test_ports(void) {
+	int i, j, f;
+	word x, y;
+	char c;
+	byte v;
+	word p, p2;
 	
-	/*
-	while(1) {
-		
-		if (prompt_from_rom((__far char *)&STR_TITLE, (__far char *)"More?") == 1) {
-			x = 0;
-			y = 8;
-			for(i = 0; i < 256; i++) {
-				c = (i & 0xff);
-				draw_glyph(x, y, c);
-				
-				x += 8;
-				if (x >= SCREEN_WIDTH) {
-					x = 0;
-					y += 8;
-					if (y >= SCREEN_HEIGHT) {
-						y = 0;
-					}
-				}
-			}
-		} else {
-			break;
-		}
-	}
-	*/
-	
-	//alert("Monitor");
-	
-	/*
-	for(i = 0; i < (SCREEN_HEIGHT*SCREEN_BYTES_PER_ROW); i++) {
-		mem(SCREEN_BUFFER + i) = 0x00;
-	}
-	*/
+	// Port monitor
 	screen_clear();
-	
-	// Test keyboard
-	if (prompt("Test keyboard?") == 1) {
-		x = 0;
-		y = 0;
-		draw_glyph(x, y, 'E'); x += 8;
-		draw_glyph(x, y, 'n'); x += 8;
-		draw_glyph(x, y, 't'); x += 8;
-		draw_glyph(x, y, 'e'); x += 8;
-		draw_glyph(x, y, 'r'); x += 8;
-		draw_glyph(x, y, ' '); x += 8;
-		draw_glyph(x, y, 's'); x += 8;
-		draw_glyph(x, y, 'o'); x += 8;
-		draw_glyph(x, y, 'm'); x += 8;
-		draw_glyph(x, y, 'e'); x += 8;
-		draw_glyph(x, y, 't'); x += 8;
-		draw_glyph(x, y, 'h'); x += 8;
-		draw_glyph(x, y, 'i'); x += 8;
-		draw_glyph(x, y, 'n'); x += 8;
-		draw_glyph(x, y, 'g'); x += 8;
-		draw_glyph(x, y, ':'); x += 8;
-		draw_glyph(x, y, ' '); x += 8;
-		
-		i = 0;
-		do {
-			draw_glyph(x, y, '_');	// Cursor
-			
-			c = getchar();
-			i++;
-			
-			if (c == KEY_BACKSPACE) {
-				draw_glyph(x, y, ' ');
-				x -= 8;
-				continue;
-			}
-			
-			draw_glyph(x, y, c);
-			
-			x += 8;
-			if (x >= SCREEN_WIDTH) {
-				x = 0;
-				y += 8;
-			}
-		} while ((i < 30) && (c != KEY_ENTER));
-	}
-	
-	screen_clear();
-	
-	
 	
 	p = 0x7800;
-	/*
-	if (prompt("Start 0x8000-0xFFFF") == 1) {
-		// 0x8000 - 0xFFFF
-		if (prompt("Start 0xC000-0xFFFF") == 1) {
-			// 0xC000 - 0xFFFF
-			if (prompt("Start 0xE000-0xFFFF") == 1) {
-				p = 0xe000;
-			} else {
-				p = 0xc000;
-			}
-		} else {
-			// 0x8000 - 0xBFFF
-			if (prompt("Start 0xA000-0xBFFF") == 1) {
-				p = 0xa000;
-			} else {
-				p = 0x8000;
-			}
-		}
-	} else {
-		// 0x0000 - 0x7FFF
-		if (prompt("Start 0x4000-0x7FFF") == 1) {
-			// 0x4000 - 0x7FFF
-			if (prompt("Start 0x6000-0x7FFF") == 1) {
-				// 0x6000 - 0x7FFF
-				//p = 0x6000;
-				if (prompt("Start 0x7000-0x7FFF") == 1) {
-					//p = 0x7000;
-					if (prompt("Start 0x7800-0x7FFF") == 1) {
-						p = 0x7800;	// 7800 = the most interesing bits!
-					} else {
-						p = 0x7000;
-					}
-				} else {
-					p = 0x6000;
-				}
-			} else {
-				// 0x4000 - 0x5FFF
-				if (prompt("Start 0x5000-0x5FFF") == 1) {
-					p = 0x5000;
-				} else {
-					p = 0x4000;
-				}
-			}
-		} else {
-			// 0x0000 - 0x3FFF
-			if (prompt("Start 0x2000-0x3FFF") == 1) {
-				p = 0x2000;
-			} else {
-				p = 0x0000;
-			}
-		}
-	}
-	*/
-	
-	
-	
-	
 	while(1) {
 		
 		// Draw current port
@@ -547,7 +244,7 @@ void main(void) {
 		y = 0;
 		draw_hex16(0, 0, p);
 		
-		if (prompt("Monitor those addresses?") == 1) {
+		if (confirm("Monitor those addresses?") == 1) {
 			// Monitor for a few frames
 			
 			// Draw labels
@@ -571,7 +268,7 @@ void main(void) {
 			// Go for a few rounds
 			for (f = 0; f < 128; f++) {
 				
-				draw_hex8(64, 0, f);	// Frame counter
+				draw_hex8(64, 0, (byte)f);	// Frame counter
 				
 				p2 = p;
 				
@@ -600,5 +297,109 @@ void main(void) {
 			p += 0x40;
 		}
 	}
+}
+*/
+
+
+
+/*
+void test_keyboard(void) {
+	word x, y;
+	char c;
+	int i;
 	
+	// Test keyboard
+	screen_clear();
+	
+	x = 0;
+	y = 0;
+	draw_glyph(x, y, 'E'); x += 8;
+	draw_glyph(x, y, 'n'); x += 8;
+	draw_glyph(x, y, 't'); x += 8;
+	draw_glyph(x, y, 'e'); x += 8;
+	draw_glyph(x, y, 'r'); x += 8;
+	draw_glyph(x, y, ' '); x += 8;
+	draw_glyph(x, y, 's'); x += 8;
+	draw_glyph(x, y, 'o'); x += 8;
+	draw_glyph(x, y, 'm'); x += 8;
+	draw_glyph(x, y, 'e'); x += 8;
+	draw_glyph(x, y, 't'); x += 8;
+	draw_glyph(x, y, 'h'); x += 8;
+	draw_glyph(x, y, 'i'); x += 8;
+	draw_glyph(x, y, 'n'); x += 8;
+	draw_glyph(x, y, 'g'); x += 8;
+	draw_glyph(x, y, ':'); x += 8;
+	draw_glyph(x, y, ' '); x += 8;
+	
+	i = 0;
+	do {
+		draw_glyph(x, y, '_');	// Cursor
+		
+		c = getchar();
+		i++;
+		
+		if (c == KEY_BACKSPACE) {
+			draw_glyph(x, y, ' ');
+			x -= 8;
+			continue;
+		}
+		
+		draw_glyph(x, y, (byte)c);
+		
+		x += 8;
+		if (x >= SCREEN_WIDTH) {
+			x = 0;
+			y += 8;
+		}
+	} while ((i < 30) && (c != KEY_ENTER));
+	
+}
+*/
+
+//volatile int bar = 0x7fff;
+//static int foo = 0x1234;
+//char baz[16];
+
+void main(void) {
+	int c;
+	char s[16];
+	char *ps;
+	byte l;
+	
+	screen_clear();
+	
+	puts(CARTRIDGE_ROM_POINTER("Hello."));
+	puts(CARTRIDGE_ROM_POINTER("This is a test."));
+	//printf(CARTRIDGE_ROM_POINTER("Test\r\n"));
+	//printf(CARTRIDGE_ROM_POINTER("Test %d, %d\n"), 1, 2);
+	//puts(&baz);
+	
+	while(1) {
+		ps = &s[0];
+		l = 0;
+		c = 0;
+		while(c != 10) {
+			
+			draw_glyph(screen_x, screen_y, '_');
+			c = getchar();
+			draw_glyph(screen_x, screen_y, ' ');
+			
+			if ((c != 0xff) && (c != 0x00)) {
+				
+				if (c == 8) {
+					if (l > 0) {
+						putchar(8);
+						ps--;
+						l--;
+					}
+				} else {
+					putchar(c);
+					*ps++ = c;
+					l++;
+				}
+			}
+		}
+		*ps++ = 0;
+		puts(s);
+	}
 }

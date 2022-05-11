@@ -4,17 +4,23 @@ INPUT_BASENAME=test
 
 CR16TOOLSET_PATH=../../tools/CR16toolset
 CR16BASM_PATH=../../tools/cr16b_asm
+INCLUDES_PATH=../../includes
+#HEADER_FILENAME=cart_header.asm
+HEADER_FILENAME=${INCLUDES_PATH}/cart_header.asm
 
+BINARY_FILENAME=${INPUT_BASENAME}.bin
+#BINARY_SIZE=0
+BINARY_SIZE=8192
 
 # Clean
-echo Cleaning...
+echo Cleaning up...
 [ -e ${INPUT_BASENAME}.err ] && rm ${INPUT_BASENAME}.err
 [ -e ${INPUT_BASENAME}.o ] && rm ${INPUT_BASENAME}.o
 [ -e ${INPUT_BASENAME}.s ] && rm ${INPUT_BASENAME}.s
 
 
 # Compile
-echo Compiling \"${INPUT_BASENAME}.c\"...
+echo Compiling \"${INPUT_BASENAME}.c\" using crcc...
 
 #	CompactRISC CR16 C Compiler Release 3.1 (revision 5)
 #	Usage: crcc [ [-flag] | [file] | [@argfile]  ] ... 
@@ -97,8 +103,9 @@ echo Compiling \"${INPUT_BASENAME}.c\"...
 export CRDIR=${CR16TOOLSET_PATH//\//\\}
 
 # Call the compiler using Wine
-wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -Wextra -c -S -n ${INPUT_BASENAME}.c
+wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -Wextra -I${INCLUDES_PATH} -c -S -n ${INPUT_BASENAME}.c
 
+# Check result, stop if something went wrong
 CRCC_RESULT=$?
 if [ $CRCC_RESULT -ne 0 ]; then
 	echo Compilation failed. Stopping make.
@@ -113,12 +120,19 @@ fi
 # Assemble binary
 echo Assembling \"${INPUT_BASENAME}.bin\"...
 # Turn the generated assembly into a binary file
-#python3 ${CR16BASM_PATH}/cr16b_asm.py --verbose --output ${INPUT_BASENAME}.bin cart_header.asm ${INPUT_BASENAME}.s
-python3 ${CR16BASM_PATH}/cr16b_asm.py --output ${INPUT_BASENAME}.bin --pad 8192 cart_header.asm ${INPUT_BASENAME}.s
+python3 ${CR16BASM_PATH}/cr16b_asm.py --stats --output ${BINARY_FILENAME} --pad ${BINARY_SIZE} ${HEADER_FILENAME} ${INPUT_BASENAME}.s
+
+
+# Check result, stop if something went wrong
+CR16BASM_RESULT=$?
+if [ $CR16BASM_RESULT -ne 0 ]; then
+	echo Assembly failed. Stopping make.
+	exit $CR16BASM_RESULT
+fi
 
 
 # Disassemble the result to check
-#python3 ../../tools/cr16b_dasm/cr16b_dasm.py test.bin
+#python3 ../../tools/cr16b_dasm/cr16b_dasm.py --start 0x200 ${BINARY_FILENAME}
 
 
 echo Finished.

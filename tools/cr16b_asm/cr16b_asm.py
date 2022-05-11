@@ -7,7 +7,10 @@ National Semiconductor's CR16B CPU
 
 
 TODO:
-	* wait, res, mulXX, storm, loadm, eiwait, ei, di, 
+	* Larger register-displacements are not yet implemented, e.g. "36(sp)" (> 32)
+	* Some specials are missing, e.g. wait, res, mulXX, storm, loadm, eiwait, ei, di, ...
+	* There are no real "sections", yet - only code or RAM
+	* Symbol resolution is dirty! They should get resolved when actually acting upon them, not at line-parse time
 
 2022-04-20 Bernhard "HotKey" Slawik
 """
@@ -17,6 +20,9 @@ def put(t):
 def put_debug(t):
 	#pass
 	print(t)
+
+
+RAM_START = 0xb700	# Default start for all data inside a non-text section
 
 class DataStore:
 	def __init__(self):
@@ -42,6 +48,7 @@ class DataStore:
 		return self.data
 	def get_bytes(self):
 		return bytes(self.data)
+
 
 I_BYTE = 0
 I_WORD = 1
@@ -197,12 +204,16 @@ def str_to_num(t):
 	elif (t[:2] == '0x'): return int(t,16)
 	return int(t)
 
+
 class CR16B_Assembler:
 	def __init__(self):
 		self.stor = DataStore()
 		self.pc = 0
 		self.align = 2
+		
 		self.labels = {}
+		self.sections = {}
+		self.section = None
 	
 	def put(self, t):
 		put(t)
@@ -243,7 +254,8 @@ class CR16B_Assembler:
 	
 	def clear(self, keep_labels=False):
 		self.stor.clear()
-		
+		self.sections = {}
+		self.section = None
 		if keep_labels:
 			pass
 		else:
@@ -266,7 +278,10 @@ class CR16B_Assembler:
 			bin_old = bin
 			bin, unresolved = self._assemble(text=text, pc=pc)
 			
+			#put('Sections: %s' % str(self.sections))
 			#put('Labels: %s' % str(self.labels))
+			
+			#@TODO: Actually lay-out the sections, then re-resolve the labels
 			
 			# Check if the binary has changed (i.e. another forward-label has been resolved)
 			#self.put_debug(' '.join(['%02X'%b for b in bin]))
@@ -276,7 +291,8 @@ class CR16B_Assembler:
 				if len(unresolved) > 0:
 					raise NameError('Finished, but there are unresolvable identifiers left: %s' % str(unresolved))
 				
-				put('Labels: %s' % str(self.labels))
+				#put('Sections: %s' % str(self.sections))
+				#put('Labels: %s' % str(self.labels))
 				break
 			
 			self.put_debug('Output is still changing. Need to do another pass to verify')
@@ -285,7 +301,6 @@ class CR16B_Assembler:
 		
 		if pass_num >= MAX_PASS_NUM:
 			raise RuntimeError('Too many passes! (%d)' % pass_num)
-		
 		
 		return bin
 	
@@ -333,15 +348,27 @@ class CR16B_Assembler:
 				
 				if label_name in self.labels:
 					# Already known
-					if self.labels[label_name] != pc:
-						self.put('Label "%s" is already known, but changed from 0x%06X to pc=0x%06X...' % (label_name, self.labels[label_name], pc))
+					
+					if self.section is not None:
+						if self.labels[label_name] != self.section:
+							self.put('Label "%s" is already known, but changed from 0x%06X to section=0x%06X...' % (label_name, self.labels[label_name], self.section))
+					else:
+						if self.labels[label_name] != pc:
+							self.put('Label "%s" is already known, but changed from 0x%06X to pc=0x%06X...' % (label_name, self.labels[label_name], pc))
 					#else:
 					#	self.put_debug('Label "%s" is already known and steady at 0x%06X...' % (label_name, self.labels[label_name]))
 				#else:
 				#	# Not yet known
 				#	self.put('Remembering new label "%s" as 0x%06X...' % (label_name, pc))
 				
-				self.labels[label_name] = pc
+				if self.section is not None:
+					self.labels[label_name] = self.section
+					self.put_debug('Remembering label "%s" as 0x%06X (section)...' % (label_name, self.section))
+				else:
+					# Remember label in code
+					self.labels[label_name] = pc
+					self.put_debug('Remembering label "%s" as 0x%06X (text)...' % (label_name, pc))
+				
 				continue
 			
 			
@@ -352,10 +379,46 @@ class CR16B_Assembler:
 			words = line.split(' ')
 			mnem = words[0].lower()
 			
-			# Ignore some "." directives (for now)
-			if mnem in ['.file', '.text', '.section', '.code_label', '.globl']:
-				self.put_debug('Ignoring directive "%s"' % mnem)
+			
+			# Some "." directives
+			if mnem in ['.file', '.code_label', '.globl']:
+				#self.put_debug('Ignoring directive "%s"' % mnem)
 				continue
+			
+			elif mnem == '.section':
+				section_name = words[1].split(',')[0]	#params[0]
+				
+				# Ignore sections that we merge directly into code
+				if section_name in ['.rdata_2', '.frdat_2']:
+					# Just use code section
+					self.put_debug('Merging section "%s" into code' % section_name)
+					self.section = None
+					
+				else:
+					# Check if it is a new section
+					if not section_name in self.sections:
+						self.put('New section "%s"' % section_name)
+						
+						# Set it to a RAM address
+						#@FIXME: Do it properly!
+						self.sections[section_name] = RAM_START
+					
+					self.section = self.sections[section_name]
+					self.put_debug('Now in section "%s"' % section_name)
+				continue
+			elif mnem == '.text':
+				self.section = None
+				self.put_debug('Now in section TEXT')
+				continue
+				
+			elif mnem == '.space':
+				
+				#@TODO: Reserver space in current section
+				self.put_debug('Reserve %d bytes in section' % int(words[1]))
+				#@FIXME: Do it properly!
+				self.section += int(words[1])
+				continue
+			
 			
 			# Parse remainder
 			p = '' if len(words) < 2 else line[len(words[0])+1:]	#words[1]
@@ -400,17 +463,18 @@ class CR16B_Assembler:
 				#elif (w[:2] == '0x'): params.append(int(w,16))
 				#elif (w[:1] == ':'):
 				#	label_name = w[1:]
-				elif (w[:1] in ['.', '_']):	# Assume ".foo" and "_bar" to be a defined symbols
+				elif (w[:1] in ['.', '_', '$']):	# Assume ".foo" and "_bar" to be a defined symbols
 					
-					#@FIXME: Better resolve labels when accessing them, not before
-					#@FIXME: Some mnemonics INTRODUCE a new identifier. Let them handle it
+					if w[:1] == '$': w = w[1:]
+					#@FIXME: Better resolve labels later when accessing them, not before
+					#@FIXME: Some mnemonics INTRODUCE a new identifier. Let them handle it and don't force-introduce dummy values!
 					
 					label_name = w
 					if not label_name in self.labels:
 						#label_addr = 0x1fffff	# Assume far address
 						label_addr = pc + 0x10	# Assume short branch
 						self.put_debug('(Yet) unknown label "%s" at line #%d, pc=0x%06X. Using dummy 0x%06X' % (label_name, line_num, pc, label_addr))
-						#unresolved += 1
+						
 						unresolved.append(label_name)
 					else:
 						label_addr = self.labels[label_name]
@@ -430,11 +494,12 @@ class CR16B_Assembler:
 				p = p[o+1:]
 			
 			# Handle mnemonics
-			self.put_debug('Handling:	%s	%s' % (mnem, str(params)))
+			#self.put_debug('Handling:	%s	%s' % (mnem, str(params)))
 			
 			# Some non-CPU directives
 			
 			# Some of my own directives
+			
 			if mnem in ['db', '.ascii']:
 				# Define byte(s)
 				for p in params:
@@ -442,13 +507,19 @@ class CR16B_Assembler:
 						self.w8(p)
 					elif (type(p) is str) and (p[:1] == p[-1:]) and (p[:1] in ("'", '"')):
 						is_esc = False
+						
+						p = p.replace('\\15', '\\r')	# "\r" is encoded as "\15". Uargh...
+						p = p.replace('\\12', '\\n')	# "\n" is encoded as "\12". Uargh...
+						
 						for b in p[1:-1]:
 							if b == '\\':
 								is_esc = True
 								continue
 							if is_esc:
 								if b == '0': b = chr(0)
-								else: raise ParseError('Unknown escape in string: %s' % str(b))
+								elif b == 'n': b = chr(12)
+								elif b == 'r': b = chr(10)
+								else: raise ValueError('Unknown escape in string: %s' % str(b))
 								is_esc = False
 							
 							self.w8(ord(b))
@@ -456,7 +527,16 @@ class CR16B_Assembler:
 						self.put('Unknown parameter to db/ascii: "%s"?' % str(p))
 				#self.pad_to_alignment()
 			elif mnem == '.align':
-				self.pad_to_alignment(params[0])
+				
+				if self.section is None:
+					# Pad code
+					self.pad_to_alignment(params[0])
+				else:
+					# Pad section
+					while (self.section % params[0]) != 0:
+						#@FIXME: Do it properly!
+						self.section += 1
+				
 			elif mnem == '.word':
 				self.w16((0x10000 + params[0]) % 0x10000)
 			elif mnem == '.byte':
@@ -465,6 +545,7 @@ class CR16B_Assembler:
 			elif mnem == '.set':
 				label_name, label_value = words[1].split(',')
 				self.labels[label_name] = int(label_value)
+				
 			#elif mnem == '.globl':
 			#	label_name = words[1]
 			#	#self.put_debug('Remembering .globl "%s" as 0x%06X' % (label_name, pc))
@@ -1495,6 +1576,7 @@ if __name__ == '__main__':
 	# Add the arguments
 	#argp.add_argument('--input', nargs='+', action='append', type=str, required=True, help='input file(s)')
 	argp.add_argument('--pad', '-p', action='store', type=int, help='Pad output to given size')
+	argp.add_argument('--stats', '-s', action='store_true', help='Show sections/labels')
 	argp.add_argument('--verbose', '-v', action='count', default=0, help='Verbose output')
 	argp.add_argument('--output', '-o', nargs='?', action='store', type=str, help='Output file')
 	argp.add_argument(dest='input', nargs='+', action='append', type=str, help='Input file(s)')
@@ -1521,6 +1603,11 @@ if __name__ == '__main__':
 	put('Assembling...')
 	asm = CR16B_Assembler()
 	bin = asm.assemble(pc=ofs, text=text)
+	
+	if args.stats:
+		put('Sections:%s' % ''.join([ '\n\t* %s: 0x%06X' % (k, v) for k,v in asm.sections.items() ]))
+		put('Labels:%s' % ''.join([ '\n\t* %s: 0x%06X' % (k, v) for k,v in asm.labels.items() ]))
+
 	
 	if output_filename is None:
 		put('Dumping (stdout)...')

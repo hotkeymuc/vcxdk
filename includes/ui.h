@@ -8,7 +8,7 @@ Hooks for VTech Genius LEader 8008CX (de) firmware UI
 
 
 // Some trials agains VTech Genius Leader 8008 CX [de] firmware traps
-void alert(__far char *text) {
+void ui_alert(__far char *text) {
 	(void)text;	// Disable "unused" warning
 	
 	__asm__("push    $2, era");
@@ -23,7 +23,7 @@ void alert(__far char *text) {
 	// Copy function parameter (r3,r2) to (r1, r0)
 	__asm__("movw    r3, r1");
 	__asm__("movw    r2, r0");
-	__asm__("adduw   $0x10, r1");	// Add the cartridge ROM base address (0x100000)
+	//__asm__("adduw   $0x10, r1");	// Add the cartridge ROM base address (0x100000)
 	
 	__asm__("storw   r0, 0(sp)");
 	__asm__("storw   r1, 0x2(sp)");
@@ -40,9 +40,8 @@ void alert(__far char *text) {
 }
 
 
-
 #pragma set_options("-Wno-return-type")	// Suppress warning "control reaches end of non-void function", because we manually set R0
-int prompt_from_rom(__far char *title, __far char *text) {
+int ui_confirm(__far char *title, __far char *text) {
 	(void)title;
 	(void)text;
 	
@@ -54,11 +53,11 @@ int prompt_from_rom(__far char *title, __far char *text) {
 	
 	// Title parameter is in (r3,r2)
 	//__asm__("movd    .str_hello, (r3,r2)");	// Set pointer of title
-	__asm__("adduw   $0x10, r3");	// ...add the cartridge ROM base address (0x100000)
+	//__asm__("adduw   $0x10, r3");	// ...add the cartridge ROM base address (0x100000)
 	
 	// Text parameter is in (r5,r4)
 	//__asm__("movd    .str_htk, (r5,r4)");	// Set pointer of text
-	__asm__("adduw   $0x10, r5");	// ...add the cartridge ROM base address (0x100000)
+	//__asm__("adduw   $0x10, r5");	// ...add the cartridge ROM base address (0x100000)
 	//XXX: __asm__("adduw   $0x10, r5");	// XXX ...add the RAM base address (not 00, 01, 02, 03, 04, 07, 08, 0f, 10, 18, 20)
 	
 	__asm__("bal     (ra,era), 0x1805C4");	// prompt_yesno__title_r3r2__text_r5r4__sys5c4 (0x0005C4 + internal ROM offset 0x180000)
@@ -77,8 +76,10 @@ int prompt_from_rom(__far char *title, __far char *text) {
 	
 }
 #pragma reset_options()
-#define prompt(t) prompt_from_rom((__far char *)&STR_TITLE, (__far char *)t)
 
+// Short form
+#define alert(t) ui_alert(CARTRIDGE_ROM_POINTER((__far char *)t))
+#define confirm(t) ui_confirm(CARTRIDGE_ROM_POINTER((__far char *)&STR_TITLE), CARTRIDGE_ROM_POINTER((__far char *)t))
 
 
 #endif

@@ -1,131 +1,136 @@
 #ifndef __KEYBOARD_H
 #define __KEYBOARD_H
+
 /*
-Genius Leader 8008 CX (german) firmware keyboard hook
+Genius Leader 8008 CX (german) firmware keyboard hooks
 
 This accesses memory addresses 0x78c0-0x78cb
 
 
-78C0 = Keyboard state!
-	78C3-78C9: keyboard buffer (4 x 16 bit), stores scancodes
-	78CF: current IN index in buffer; used by ROM (sys3c8)	037B2C:	1F D8 CF 78	D81F 78CF	storb   r0, 0x078CF
-	78D0: current OUT index in buffer; used by ROM (sys3c8)	037B28:	1F D8 D0 78	D81F 78D0	storb   r0, 0x078D0
-	
-	78CB: current SCAN CODE (FF if none)
+Info:
+	78C0 = Keyboard state!
+		78C3-78C9: keyboard buffer (4 x 16 bit), stores scancodes
+		78CF: current IN index in buffer; used by ROM (sys3c8)	037B2C:	1F D8 CF 78	D81F 78CF	storb   r0, 0x078CF
+		78D0: current OUT index in buffer; used by ROM (sys3c8)	037B28:	1F D8 D0 78	D81F 78D0	storb   r0, 0x078D0
 		
-		5E = SoftKey: "E-Mail"
-		5D = SoftKey 5 "Kunststudio"
-		5C = "3"
-		5B = "E"
-		5A = "S"
-		59 = "X"
-		58 = ANSWER/PRINT
+		78CB: current SCAN CODE (FF if none)
+			
+			5E = SoftKey: "E-Mail"
+			5D = SoftKey 5 "Kunststudio"
+			5C = "3"
+			5B = "E"
+			5A = "S"
+			59 = "X"
+			58 = ANSWER/PRINT
+			
+			56 = SoftKey "System"
+			55 = SoftKey 6 "Hausaufgabenhilfe"
+			54 = "2"
+			53 = "W"
+			52 = "A"
+			51 = "Y" (de)
+			50 = PLAYER/BOOKMARK
+			
+			
+			4E = SoftKey "MagiCam"
+			4D = SoftKey "Demo"
+			4C = "1"
+			4B = "Q"
+			4A = ?unused?
+			49 = ?unused?
+			48 = LEVEL/SYMBOL
+			
+			46 = SoftKey "Kassette"
+			45 = SoftKey "Drucker"
+			44 = ESC
+			43 = TAB
+			42 = CAPSLOCK
+			41 = SHIFT LEFT
+			40 = PLAYER1/HELP
+			
+			
+			3E = INSERT/DELETE
+			3D = "'" (de) / "`" / "^"
+			3C = "Ss" (de) / "?" / "\\"
+			3B = "Ue" (de)
+			3A = "Oe" (de)
+			39 = "-" / "_"
+			38 = SHIFT RIGHT
+			
+			36 = ENTER
+			35 = "+" / "*" / "~"
+			34 = "0"
+			33 = "P"
+			32 = "L"
+			31 = "." / ":" / ">"
+			30 = CURSOR RIGHT / Player2 / End
+			
+			
+			2E = BACKSPACE
+			2D = "Ae" (de)
+			2C = "9"
+			2B = "O"
+			2A = "K"
+			29 = ","/";", "<"
+			28 = CURSOR DOWN / Page Down
+			
+			26 = TouchPad Button LEFT
+			25 = CURSOR UP / Page Up
+			24 = "8"
+			23 = "I"
+			22 = "J"
+			21 = "M"
+			20 = CURSOR LEFT / Home
+			
+			
+			1E = Touchpad Button RIGHT
+			1D = SoftKey 4 "Logik & Spiele"
+			1C = "7"
+			1B = "U"
+			1A = "H"
+			19 = "N"
+			18 = REPEAT
+			
+			16 = SoftKey 2 "Mathematik"
+			15 = SoftKey 1 "Wortspiele"
+			14 = "6"
+			13 = "Z" (de)
+			12 = "G"
+			11 = "B"
+			10 = ALT
+			
+			
+			0E = POWER ON
+			0D = POWER OFF
+			0C = "5"
+			0B = "T"
+			0A = "F"
+			09 = "V"
+			08 = SPACE
+			
+			06 = SoftKey 6 "Computerpraxis"
+			05 = SoftKey 3 "Quiz-Fragen"
+			04 = "4"
+			03 = "R"
+			02 = "D"
+			01 = "C"
+			00 = CONTROL LEFT
+			
+			FF=none
+			
+		78F4 used by ROM: 037EAA:	1F D8 F4 78	D81F 78F4	storb   r0, 0x078F4
+		78D1 used by ROM: 037EAE:	1F D8 D1 78	D81F 78D1	storb   r0, 0x078D1
 		
-		56 = SoftKey "System"
-		55 = SoftKey 6 "Hausaufgabenhilfe"
-		54 = "2"
-		53 = "W"
-		52 = "A"
-		51 = "Y" (de)
-		50 = PLAYER/BOOKMARK
-		
-		
-		4E = SoftKey "MagiCam"
-		4D = SoftKey "Demo"
-		4C = "1"
-		4B = "Q"
-		4A = ?unused?
-		49 = ?unused?
-		48 = LEVEL/SYMBOL
-		
-		46 = SoftKey "Kassette"
-		45 = SoftKey "Drucker"
-		44 = ESC
-		43 = TAB
-		42 = CAPSLOCK
-		41 = SHIFT LEFT
-		40 = PLAYER1/HELP
-		
-		
-		3E = INSERT/DELETE
-		3D = "'" (de) / "`" / "^"
-		3C = "Ss" (de) / "?" / "\\"
-		3B = "Ue" (de)
-		3A = "Oe" (de)
-		39 = "-" / "_"
-		38 = SHIFT RIGHT
-		
-		36 = ENTER
-		35 = "+" / "*" / "~"
-		34 = "0"
-		33 = "P"
-		32 = "L"
-		31 = "." / ":" / ">"
-		30 = CURSOR RIGHT / Player2 / End
-		
-		
-		2E = BACKSPACE
-		2D = "Ae" (de)
-		2C = "9"
-		2B = "O"
-		2A = "K"
-		29 = ","/";", "<"
-		28 = CURSOR DOWN / Page Down
-		
-		26 = TouchPad Button LEFT
-		25 = CURSOR UP / Page Up
-		24 = "8"
-		23 = "I"
-		22 = "J"
-		21 = "M"
-		20 = CURSOR LEFT / Home
-		
-		
-		1E = Touchpad Button RIGHT
-		1D = SoftKey 4 "Logik & Spiele"
-		1C = "7"
-		1B = "U"
-		1A = "H"
-		19 = "N"
-		18 = REPEAT
-		
-		16 = SoftKey 2 "Mathematik"
-		15 = SoftKey 1 "Wortspiele"
-		14 = "6"
-		13 = "Z" (de)
-		12 = "G"
-		11 = "B"
-		10 = ALT
-		
-		
-		0E = POWER ON
-		0D = POWER OFF
-		0C = "5"
-		0B = "T"
-		0A = "F"
-		09 = "V"
-		08 = SPACE
-		
-		06 = SoftKey 6 "Computerpraxis"
-		05 = SoftKey 3 "Quiz-Fragen"
-		04 = "4"
-		03 = "R"
-		02 = "D"
-		01 = "C"
-		00 = CONTROL LEFT
-		
-		FF=none
-		
-	78F4 used by ROM: 037EAA:	1F D8 F4 78	D81F 78F4	storb   r0, 0x078F4
-	78D1 used by ROM: 037EAE:	1F D8 D1 78	D81F 78D1	storb   r0, 0x078D1
-	
 
-	7960: used by ROM (sys5a0)
-	7962: used by ROM (sys5a0)
-
+		7960: used by ROM (sys5a0)
+		7962: used by ROM (sys5a0)
 
 2022-05-10 Bernhard "HotKey" Slawik
 */
+
+#include "vcxdk.h"	// for byte, word
+#include "memory.h"	// for CARTRIDGE_ROM_POINTER()
+
 
 // Addresses for 8008 CX (de) firmware
 #define KEYBOARD_BUFFER 0x78c3
@@ -135,6 +140,7 @@ This accesses memory addresses 0x78c0-0x78cb
 #define KEYBOARD_CURRENT_SCANCODE 0x78cb
 
 
+// Define codes for special keys
 #define KEY_NONE -1
 #define KEY_SHIFT_LEFT 0x00
 #define KEY_SHIFT_RIGHT 0x00
@@ -185,6 +191,7 @@ This accesses memory addresses 0x78c0-0x78cb
 #define KEY_HOME 0x00
 #define KEY_END 0x00
 
+// Keyboard map
 const char KEY_MAP[2][6][16] = {
 	// Normal
 	{
@@ -207,7 +214,8 @@ const char KEY_MAP[2][6][16] = {
 }
 ;
 
-char scancode_to_char(unsigned char scancode, unsigned char modifiers) {
+//char scancode_to_char(unsigned char scancode, unsigned char modifiers) {
+int scancode_to_char(word scancode, word modifiers) {
 	// Convert given scancode (and mofidiers) to ASCII character
 	
 	__far char *p;
@@ -215,17 +223,21 @@ char scancode_to_char(unsigned char scancode, unsigned char modifiers) {
 	
 	if (scancode >= 0x60) return KEY_NONE;
 	
+	/*
 	//@FIXME: ROM-addresses must be manually hacked to point to the correct code segment!
 	p = (__far char *)&KEY_MAP;
 	__asm__("adduw   $0x10, r0");	// Add the cartridge ROM base address (0x100000)
 	__asm__("storw	r0,4(sp)");
+	*/
+	p = CARTRIDGE_ROM_POINTER(&KEY_MAP);
+	
 	
 	// Use scancode DIRECTLY as absolute index (0x00 - 0x5f)
 	p += scancode;
 	
 	//@TODO: Apply modifiers
 	if (modifiers > 0) {
-		p += (6 * 16);
+		p += (6 * 16);	// Skip up one key map page
 	}
 	
 	c = *p;
@@ -249,7 +261,7 @@ unsigned char key_available(void) {
 	return 0;
 }
 
-char getchar(void) {
+int getchar(void) {
 	// Block until key is pressed, then consume that scancode and return it as ASCII character
 	
 	unsigned char scancode;

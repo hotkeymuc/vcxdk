@@ -5,11 +5,12 @@ typedef unsigned char byte;
 typedef unsigned short word;
 typedef unsigned long int dword;
 
-
+//#include "memory.h"
 //#include "screen.h"
 //#include "keyboard.h"
 //#include "ui.h"
 
+/*
 __far void *ROM_POINTER(__far void *p) {
 	// Change the given pointer to point to ROM space
 	
@@ -17,7 +18,7 @@ __far void *ROM_POINTER(__far void *p) {
 	__asm__("storw	r3,2(sp)");
 	return p;
 }
-
+*/
 
 //#define mem(x) *(unsigned char *)(x)
 

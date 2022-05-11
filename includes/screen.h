@@ -7,6 +7,7 @@ Simple LCD frame buffer access for the VTech Genius Leader 8008 CX
 2022-05-10 Bernhard "HotKey" Slawik
 */
 
+#include "memory.h"	// for CARTRIDGE_ROM_POINTER() for font
 
 #define SCREEN_WIDTH 240
 #define SCREEN_HEIGHT 144
@@ -15,6 +16,7 @@ Simple LCD frame buffer access for the VTech Genius Leader 8008 CX
 #define VRAM_START 0x3300	// Start of video memory: 0x3300
 #define SCREEN_BUFFER 0x3340	// Start of frame buffer (2bpp): 0x3340
 
+static volatile word screen_x, screen_y;
 
 void screen_clear(void) {
 	int i;
@@ -24,9 +26,49 @@ void screen_clear(void) {
 	for(i = 0; i < (SCREEN_HEIGHT*SCREEN_WORDS_PER_ROW); i++) {
 		*p++ = 0x0000;
 	}
+	screen_x = 0;
+	screen_y = 0;
 }
 
+void screen_scroll(word rows) {
+	word i;
+	unsigned short *p1;
+	unsigned short *p2;
+	
+	p1 = (unsigned short *)SCREEN_BUFFER;
+	p2 = (unsigned short *)SCREEN_BUFFER + (rows * SCREEN_WORDS_PER_ROW);
+	
+	// Copy up
+	for(i = 0; i < ((SCREEN_HEIGHT-rows)*SCREEN_WORDS_PER_ROW); i++) {
+		*p1++ = *p2++;
+	}
+	
+	// Clear rest
+	for(i = 0; i < (rows*SCREEN_WORDS_PER_ROW); i++) {
+		*p1++ = 0x0000;
+	}
+}
+
+
+/*
+// Manually draw the letter "A"
+#define mem(x) *(unsigned char *)(x)
+#define bin(a,b,c,d,e,f,g,h) (a*128 + b*64 + c*32 + d*16 + e*8 + f*4 + g*2 + h)
+
+mem(SCREEN_BUFFER + 60*0 + 0) = bin(0,0, 0,0, 1,1, 1,1);	mem(SCREEN_BUFFER + 60*0 + 1) = bin(1,1, 0,0, 0,0, 0,0);
+mem(SCREEN_BUFFER + 60*1 + 0) = bin(0,0, 1,1, 1,1, 0,0);	mem(SCREEN_BUFFER + 60*1 + 1) = bin(1,1, 1,1, 0,0, 0,0);
+mem(SCREEN_BUFFER + 60*2 + 0) = bin(1,1, 1,1, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*2 + 1) = bin(0,0, 1,1, 1,1, 0,0);
+mem(SCREEN_BUFFER + 60*3 + 0) = bin(1,1, 1,1, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*3 + 1) = bin(0,0, 1,1, 1,1, 0,0);
+mem(SCREEN_BUFFER + 60*4 + 0) = bin(1,1, 1,1, 1,1, 1,1);	mem(SCREEN_BUFFER + 60*4 + 1) = bin(1,1, 1,1, 1,1, 0,0);
+mem(SCREEN_BUFFER + 60*5 + 0) = bin(1,1, 1,1, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*5 + 1) = bin(0,0, 1,1, 1,1, 0,0);
+mem(SCREEN_BUFFER + 60*6 + 0) = bin(1,1, 1,1, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*6 + 1) = bin(0,0, 1,1, 1,1, 0,0);
+mem(SCREEN_BUFFER + 60*7 + 0) = bin(0,0, 0,0, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*7 + 1) = bin(0,0, 0,0, 0,0, 0,0);
+*/
+
+
 #include "font_console_8x8.h"
+#define FONT_WIDTH 8
+#define FONT_HEIGHT 8
 
 void draw_glyph(word x, word y, word g) {
 	__far byte *dp;
@@ -35,24 +77,36 @@ void draw_glyph(word x, word y, word g) {
 	word *p;
 	byte d;
 	
+	if (g >= FONT_CONSOLE_8X8_SIZE) return;
+	
 	// Source pointer to glyph in ROM
-	dp = (byte *)&font_console_8x8[g % 256][0];
+	/*
+	// Fix the pointer to point to cartridge ROM
+	dp = (byte *)&font_console_8x8[g][0];
 	__asm__("adduw   $0x10, r0");	// ...add the cartridge ROM base address (0x100000)
 	__asm__("storw   r0,8(sp)");
+	*/
+	dp = CARTRIDGE_ROM_POINTER(&FONT_CONSOLE_8X8[g]);	// Font lives as constant in cartridge ROM
+	
 	
 	// Destination pointer to screen buffer
+	
+	// Byte-wide access:
 	//p = (byte *)SCREEN_BUFFER;
 	//p += (y * SCREEN_BYTES_PER_ROW);	// 240 pixels at 2 bits-per-pixel = 60 bytes per row
 	//p += (x >> 2);	// 2 bits per pixel = 1/4 byte per column
 	
+	// Word-wide access:
 	p = (word *)SCREEN_BUFFER;
-	p += (y * SCREEN_WORDS_PER_ROW);	// 240 pixels at 2 bits-per-pixel = 60 bytes per row
+	p += (y * SCREEN_WORDS_PER_ROW);	// 240 pixels at 2 bits-per-pixel = 30 words per row
 	p += (x >> 3);	// 2 bits per pixel = 1/8 word per column
 	
+	// Draw all rows of font
 	for(iy = 0; iy < 8; iy++) {
 		d = *dp++;
+		
 		/*
-		// Set as two bytes at a time
+		// Set as two bytes
 		// Left 4 pixels fit into first byte
 		*p++ = 3 *	// Color (0=off/white, 1=bright, 2=medium, 3=black)
 		(
@@ -73,7 +127,7 @@ void draw_glyph(word x, word y, word g) {
 		p += (SCREEN_BYTES_PER_ROW - 2);	// 60 bytes per row, we already set 2 bytes (8 pixels at 2bpp)
 		*/
 		
-		// Set as one word at a time
+		// Set 8 pixels at once using one word at a time
 		*p = 3 *	// Color (0=off/white, 1=bright, 2=medium, 3=black)
 		(
 			  (d & 0x80) >> 1
@@ -86,11 +140,13 @@ void draw_glyph(word x, word y, word g) {
 			| (d & 0x02) << 9
 			| (d & 0x01) << 8
 		);
-		p += SCREEN_WORDS_PER_ROW;
+		p += SCREEN_WORDS_PER_ROW;	// Skip destination pointer to next LCD row
 	}
 }
 
-void draw_hexdigit(word x, word y, byte v) {
+
+
+void draw_hexdigit(word x, word y, word v) {	// byte v	// ... but we are always passing 16-bit anyway!
 	if (v <= 0x09)
 		draw_glyph(x  , y, (word)('0'+v));
 	else if (v <= 0x0f)
@@ -98,18 +154,85 @@ void draw_hexdigit(word x, word y, byte v) {
 	else
 		draw_glyph(x  , y, (word)'?');
 }
-void draw_hex8(word x, word y, byte v) {
-	//draw_glyph(x  , y, HEXTABLE[v >> 4]);
-	//draw_glyph(x+8, y, HEXTABLE[v & 0xf]);
-	draw_hexdigit(x  , y, (v >> 4));
-	draw_hexdigit(x+8, y, (v & 0x0f));
+
+
+void draw_hex8(word x, word y, word v) {	// byte v	// ... but we are always passing 16-bit anyway!
+	draw_hexdigit(x, y, (v >> 4)); x += FONT_WIDTH;
+	draw_hexdigit(x, y, (v & 0x0f));
 }
+
+
 void draw_hex16(word x, word y, word v) {
-	draw_hexdigit(x   , y, (v >> 12)      );
-	draw_hexdigit(x+ 8, y, (v >>  8) & 0xf);
-	draw_hexdigit(x+16, y, (v >>  4) & 0xf);
-	draw_hexdigit(x+24, y, (v      ) & 0xf);
+	draw_hexdigit(x, y, (v >> 12)      ); x += FONT_WIDTH;
+	draw_hexdigit(x, y, (v >>  8) & 0xf); x += FONT_WIDTH;
+	draw_hexdigit(x, y, (v >>  4) & 0xf); x += FONT_WIDTH;
+	draw_hexdigit(x, y, (v      ) & 0xf);
 }
+
+
+/*
+void draw_pchar(word x, word y, __far char *p) {
+	while (*p != 0) {
+		draw_glyph(x, y, (word)*p++);
+		x += FONT_WIDTH;
+		if (x >= SCREEN_WIDTH) {
+			x = 0;
+			y += FONT_HEIGHT;
+		}
+	}
+}
+*/
+
+void screen_putchar(int c) {
+	//int over;
+	
+	if ((c == '\r') || (c == '\n')) {
+		screen_x = 0;
+		screen_y += FONT_HEIGHT;
+	} else if (c == 8) {
+		if (screen_x >= FONT_WIDTH)
+			screen_x -= FONT_WIDTH;
+		else
+			screen_x = 0;
+	} else if (c == 9) {
+		screen_x = ((screen_x >> 5) + 1) << 5;
+	} else {
+		draw_glyph(screen_x, screen_y, (word)c);
+		screen_x += FONT_WIDTH;
+	}
+	
+	if (screen_x >= SCREEN_WIDTH) {
+		screen_x -= SCREEN_WIDTH;
+		screen_y += FONT_HEIGHT;
+	}
+	
+	//if (screen_y+FONT_HEIGHT > SCREEN_HEIGHT) {
+	//	over = (screen_y+FONT_HEIGHT) - SCREEN_HEIGHT;
+	if (screen_y >= SCREEN_HEIGHT) {
+		screen_scroll(FONT_HEIGHT);
+		screen_y = SCREEN_HEIGHT - FONT_HEIGHT;
+	}
+}
+
+
+void screen_puts(__far char *s) {
+	char c;
+	
+	while(1) {
+		c = *s++;
+		if (c == 0) break;
+		
+		screen_putchar(c);
+	}
+	
+	// Trailing new line as per spec
+	screen_putchar('\n');
+}
+
+#define putchar(c) screen_putchar(c)
+#define puts(s) screen_puts(s)
+
+//void printf(__far const char *format, ...) { }
 
 
 #endif

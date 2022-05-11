@@ -1068,54 +1068,46 @@ if __name__ == '__main__':
 	SHOW_BYTES = True
 	SHOW_WORDS = True
 	SHOW_ASM = True
-	ADDRESS_START = 0x200	#0x040000
-	ADDRESS_STOP = ADDRESS_START + 0x010000
+	#ADDRESS_START = 0x200	#0x040000
+	#ADDRESS_STOP = ADDRESS_START + 0x010000
 	
 	import sys
 	
-	"""
+	
 	import argparse
 	argp = argparse.ArgumentParser(description='Disassemble binary into CR16B assembly')
 	
 	# Add the arguments
-	#argp.add_argument('--input', nargs='+', action='append', type=str, required=True, help='input file(s)')
-	#argp.add_argument('--output', nargs='?', action='store', type=str, help='output file')
-	argp.add_argument(dest='input', nargs='1', action='append', type=str, help='input filename')
+	def auto_int(x):
+		return int(x, 0)
+	argp.add_argument('--offset', action='store', type=auto_int, default=0, help='File offset')
+	argp.add_argument('--start', action='store', type=auto_int, default=0, help='Start at address')
+	argp.add_argument('--stop', action='store', type=auto_int, default=0, help='Stop at address')
+	argp.add_argument('--stats', '-s', action='store_true', default=0, help='Show stats')
+	argp.add_argument(dest='input', type=str, help='Input filename (.hex or .bin)')
 	
 	# Execute the parse_args() method
 	args = argp.parse_args()
 	
-	input_filename = args.input
-	"""
 	
-	if len(sys.argv) < 2:
-		
-		ROM_FILENAME = 'CART_GL8008CX_Update.dump.000.seg1-64KB__4KB_used.bin'
-		ADDRESS_START = 0x0
-		ADDRESS_STOP = ADDRESS_START + 0x01000
-		#ROM_FILENAME = 'test_in.hex'
-		#ROM_FILENAME = 'test_all.hex'
-	else:
-		ROM_FILENAME = sys.argv[1]
+	put('Loading "%s"...' % args.input)
 	
-	
-	put('Disassembling "%s"...' % ROM_FILENAME)
-	
-	if ROM_FILENAME.endswith('.hex'):
+	if args.input.endswith('.hex'):
 		# Load hex
 		data = []
-		for l in open(ROM_FILENAME, 'r'):
+		for l in open(args.input, 'r'):
 			v16 = int(l, 16)
 			data.append(v16 & 0xff)
 			data.append(v16 >> 8)
 		data = bytes(data)
 		#put(data)
-		opcodes = DataBuffer(data)
+		
 	else:
 		# Load binary image
-		with open(ROM_FILENAME, 'rb') as h:
+		with open(args.input, 'rb') as h:
 			data = h.read()
-			opcodes = DataBuffer(data)
+	
+	opcodes = DataBuffer(data[args.offset:])
 	
 	# Instantiate
 	#dasm = CR16A_Disassembler()
@@ -1124,8 +1116,11 @@ if __name__ == '__main__':
 	# Go!
 	stream = Stream()
 	
-	pc = ADDRESS_START
-	while pc < ADDRESS_STOP:
+	pc = args.start
+	pc_stop = args.stop if args.stop > 0 else len(data)
+	
+	
+	while pc < pc_stop:
 		
 		r = dasm.disassemble(stream, pc, opcodes)
 		
@@ -1158,22 +1153,22 @@ if __name__ == '__main__':
 			put('End of data!')
 			break
 	
-	
-	# Address usage statistics
-	put('-'*40)
-	put('Addresses:')
-	for addr, uses in sorted(dasm.addrs_found.items()):
-		#uses = dasm.addrs_found[addr]
-		if addr in KNOWN_ADDRS:
-			addr_str = KNOWN_ADDRS[addr]
-		else:
-			
-			# Filter single-use unknown addresses
-			#if len(uses) == 1: continue
-			
-			addr_str = '0x%06X' % addr
-			
-		put('	%s: Used by %s' % (addr_str, ', '.join([ '0x%06X'%u for u in uses ])))
-		#put('	0x%06X: Used by %s' % (addr, ', '.join([ '0x%06X'%u for u in uses ])))
+	if args.stats:
+		# Address usage statistics
+		put('-'*40)
+		put('Addresses:')
+		for addr, uses in sorted(dasm.addrs_found.items()):
+			#uses = dasm.addrs_found[addr]
+			if addr in KNOWN_ADDRS:
+				addr_str = KNOWN_ADDRS[addr]
+			else:
+				
+				# Filter single-use unknown addresses
+				#if len(uses) == 1: continue
+				
+				addr_str = '0x%06X' % addr
+				
+			put('	%s: Used by %s' % (addr_str, ', '.join([ '0x%06X'%u for u in uses ])))
+			#put('	0x%06X: Used by %s' % (addr, ', '.join([ '0x%06X'%u for u in uses ])))
 	
 	put('End.')

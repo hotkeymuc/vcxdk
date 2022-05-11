@@ -271,7 +271,7 @@ class CR16B_Assembler:
 			# Check if the binary has changed (i.e. another forward-label has been resolved)
 			#self.put_debug(' '.join(['%02X'%b for b in bin]))
 			if bin == bin_old:
-				self.put('Output has converged after %d(-1) passes!' % pass_num)
+				self.put('Output converged after %d(-1) passes.' % pass_num)
 				
 				if len(unresolved) > 0:
 					raise NameError('Finished, but there are unresolvable identifiers left: %s' % str(unresolved))
@@ -409,7 +409,7 @@ class CR16B_Assembler:
 					if not label_name in self.labels:
 						#label_addr = 0x1fffff	# Assume far address
 						label_addr = pc + 0x10	# Assume short branch
-						self.put('(Yet) unknown label "%s" at line #%d, pc=0x%06X. Using dummy 0x%06X' % (label_name, line_num, pc, label_addr))
+						self.put_debug('(Yet) unknown label "%s" at line #%d, pc=0x%06X. Using dummy 0x%06X' % (label_name, line_num, pc, label_addr))
 						#unresolved += 1
 						unresolved.append(label_name)
 					else:
@@ -1494,10 +1494,10 @@ if __name__ == '__main__':
 	
 	# Add the arguments
 	#argp.add_argument('--input', nargs='+', action='append', type=str, required=True, help='input file(s)')
-	argp.add_argument('--pad', '-p', action='store', type=int, help='pad output to given size')
-	argp.add_argument('--verbose', '-v', action='count', default=0, help='verbose output')
-	argp.add_argument('--output', '-o', nargs='?', action='store', type=str, help='output file')
-	argp.add_argument(dest='input', nargs='+', action='append', type=str, help='input file(s)')
+	argp.add_argument('--pad', '-p', action='store', type=int, help='Pad output to given size')
+	argp.add_argument('--verbose', '-v', action='count', default=0, help='Verbose output')
+	argp.add_argument('--output', '-o', nargs='?', action='store', type=str, help='Output file')
+	argp.add_argument(dest='input', nargs='+', action='append', type=str, help='Input file(s)')
 	
 	# Execute the parse_args() method
 	args = argp.parse_args()

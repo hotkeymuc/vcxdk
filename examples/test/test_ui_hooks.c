@@ -1,4 +1,9 @@
+/*
+This is a stand-alone proof-of-concept test program.
+It was the first piece of code that managed to run on real hardware and which did evoke a reaction by the system.
 
+2022-05-06 Bernhard "HotKey" Slawik
+*/
 
 // Those must be aligned properly (assembler takes care of this and adds trailing zero bytes)
 __far const char STR_HELLO[] = "Hello, world!";

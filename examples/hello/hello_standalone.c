@@ -1,9 +1,20 @@
+/*
+A stand-alone proof-of-concept test program.
+It calls "widgets" in the firmware to show an alert and confirmation-prompt.
+This was the first piece of code that managed to run on real hardware and which did evoke a reaction by the system.
+
+Known issue:
+	The dialogs won't display in main menu.
+	
+Fix:
+	* Enter main menu
+	* Select the "System" category
+	* Start "File Manager"
+	* Now press the "Cartridge" soft button to run the program
 
 
-// Those must be aligned properly (assembler takes care of this and adds trailing zero bytes)
-__far const char STR_HELLO[] = "Hello, world!";
-__far const char STR_CONTINUE[] = "Continue?";
-__far const char STR_TITLE[] = "test.c!";
+2022-05-06 Bernhard "HotKey" Slawik
+*/
 
 
 
@@ -81,7 +92,7 @@ int confirm(__far char *title, __far char *text) {
 
 
 // Keep them 2-aligned, but keep in mind that they contain a trailing zero!
-__far const char hello[] = "Hello there";
+__far const char hello[] = "Hello";
 __far const char world[] = "World!!";
 __far const char yes[] = "YES!!";
 __far const char no[] = "NO!";

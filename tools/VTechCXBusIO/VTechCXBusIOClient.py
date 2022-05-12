@@ -101,6 +101,23 @@ PAGE_STEP = 16	#*8
 # How to find them: Do a thing for X times (e.g. 100 times). Dump the "combos by count", then look for address accesses that happened AROUND the same number of times (some events get lost!). Then: put addr candidates to watch list and see in real time if something happens
 WATCH_LIST = [
 	# 0xfd00	Put interesting GLCX ports here! (serial / LED, keyboard, ...)
+	0x080000,	# GLCX cartridge start?
+	0x080001,
+	0x080002,
+	0x080003,
+	0x080004,
+	0x080005,
+	0x080006,
+	0x080007,
+	0x080008,
+	0x080009,
+	0x08000A,
+	0x08000B,
+	0x08000C,
+	0x08000D,
+	0x08000E,
+	0x08000F,
+	0x080010,
 ]
 
 IGNORE_LIST = [
@@ -341,7 +358,7 @@ class VTechGLCXBusIO:
 				self.handle_line(line)
 			
 			
-	def update_mon(self, count=5):
+	def update_binary(self, count=5):
 		"""Check for new binary packets and parse them"""
 		
 		for rep in range(count):
@@ -482,7 +499,10 @@ class VTechGLCXBusIO:
 		"""
 		#self.pinmode_acquire_r()
 		#self.pinmode_high_z()
-		self.send_command(b'M' + bytes(pin, 'ascii') + bytes(edge, 'ascii'))
+		if type(pin) is int:
+			self.send_command(b'M' + bytes([pin]) + bytes(edge, 'ascii'))
+		else:
+			self.send_command(b'M' + bytes(pin, 'ascii') + bytes(edge, 'ascii'))
 	
 	def monitor_stop(self):
 		# Stop monitoring, remove interrupt
@@ -548,7 +568,7 @@ class VTechGLCXBusIO:
 class VTechVis:
 	"The visual representation of the VTech Genius Leader computer"
 	
-	def __init__(self, name='main', addr_offset=0, mem_size=BANK_SIZE, pos=(PADDING, PADDING), width=BANK_WIDTH):
+	def __init__(self, name='main', addr_offset=0, mem_size=BANK_SIZE, pos=(PADDING, PADDING), zoom=1, width=BANK_WIDTH):
 		self.name = name
 		self.addr_offset = addr_offset
 		self.mem_size = mem_size
@@ -563,6 +583,7 @@ class VTechVis:
 		
 		# Gfx stuff
 		self.pos = pos
+		self.zoom = zoom
 		self.width = width	#256
 		self.height = int(math.ceil(self.mem_size / self.width))
 		self.size = (self.width, self.height)
@@ -590,8 +611,8 @@ class VTechVis:
 			self.usage[i] = 0
 	
 	def pos_to_addr(self, p):
-		x = max(0, min(self.width-1, (p[0] - self.pos[0]) // ZOOM))
-		y = max(0, min(self.height-1, (p[1] - self.pos[1]) // ZOOM))
+		x = max(0, min(self.width-1, (p[0] - self.pos[0]) // self.zoom))
+		y = max(0, min(self.height-1, (p[1] - self.pos[1]) // self.zoom))
 		return self.addr_offset + (x + y*self.width)
 	
 	def addr_to_pos(self, addr):
@@ -605,7 +626,7 @@ class VTechVis:
 		
 		x = a % self.width
 		y = a //self.width
-		return(self.pos[0] + x * ZOOM + ZOOM//2, self.pos[1] + y * ZOOM + ZOOM//2)
+		return(self.pos[0] + x * self.zoom + self.zoom//2, self.pos[1] + y * self.zoom + self.zoom//2)
 	
 	def handle_bus(self, addr, data, flags):
 		# Store in memory map
@@ -625,7 +646,7 @@ class VTechVis:
 		#@FIXME: set_at() is really uncool to use! I want hardware pixel surface arrays!!
 		#self.surface_array[] = value
 		#col = (0xff, 0xff, value)
-		self.surface.set_at((a % self.width, a // self.width), (0xff, 0xff, 0x7f + data//2) )
+		self.surface.set_at((a % self.width, a // self.width), (0xff, 0xff, data))	#0x7f + data//2) )
 		
 	
 	def clear_surface(self):
@@ -633,14 +654,14 @@ class VTechVis:
 	
 	def draw(self, screen):
 		
-		if ZOOM == 4:
+		if self.zoom == 4:
 			pygame.transform.scale2x(self.surface, self.surfaceZoom2)
 			pygame.transform.scale2x(self.surfaceZoom2, self.surfaceZoom4)
 			screen.blit(self.surfaceZoom4, self.pos)
-		elif ZOOM == 3:
+		elif self.zoom == 3:
 			pygame.transform.scale(self.surface, (self.size[0]*3, self.size[1]*3), self.surfaceZoom3)
 			screen.blit(self.surfaceZoom3, self.pos)
-		elif ZOOM == 2:
+		elif self.zoom == 2:
 			screen.blit(pygame.transform.scale2x(self.surface), self.pos)
 		else:
 			screen.blit(self.surface, self.pos)
@@ -659,9 +680,9 @@ class VTechVis:
 			#p = self.addr_to_pos(self.addr_select)
 			#pygame.draw.circle(screen, col, p, ZOOM*2, 1)
 			#pygame.draw.rect(screen, col, [p[0]-ZOOM, p[1]-ZOOM, ZOOM*3, ZOOM*3], False)
-			x = self.pos[0] + (a % self.width)*ZOOM
-			y = self.pos[1] + (a //self.width)*ZOOM
-			pygame.draw.rect(screen, col, [x-ZOOM, y-ZOOM, ZOOM*3 -1, ZOOM*3-1], ZOOM)
+			x = self.pos[0] + (a % self.width)*self.zoom
+			y = self.pos[1] + (a //self.width)*self.zoom
+			pygame.draw.rect(screen, col, [x-self.zoom, y-self.zoom, self.zoom*3 -1, self.zoom*3-1], self.zoom)
 		
 	def save_mem(self, filename):
 		put('Writing dump to "%s"...' % (filename))
@@ -712,38 +733,49 @@ def run_vis():
 		return img
 	
 	# Create multiple visualizations
+	vtv_video = VTechVis(name='VMEM', addr_offset=0x003300 + 0x002600, mem_size=(240*144)//4, width=120//2, zoom=2)
+	#vtv_video.fade = False
+	
 	vtvs = [
-		VTechVis(name='M0', addr_offset=0x000000, mem_size=BANK_SIZE),
-		VTechVis(name='M1', addr_offset=BANK_SIZE, mem_size=BANK_SIZE)
+		VTechVis(name='M0', addr_offset=BANK_SIZE*0, mem_size=BANK_SIZE, zoom=ZOOM),
+		VTechVis(name='M1', addr_offset=BANK_SIZE*1, mem_size=BANK_SIZE, zoom=ZOOM),
+		#VTechVis(name='M2', addr_offset=BANK_SIZE*2, mem_size=BANK_SIZE, zoom=ZOOM),
+		#VTechVis(name='M3', addr_offset=BANK_SIZE*3, mem_size=BANK_SIZE, zoom=ZOOM),
+		
+		#vtv_video,
 	]
-	vtv = vtvs[0]
+	vtv = vtvs[0]	# Selected vis
 	burst_dump = False
 	
+	# Layout
 	i = 0
 	x = PADDING
 	y = PADDING
 	for v in vtvs:
 		#put('x=%d, y=%d' % (x, y))
-		if (x+v.width*ZOOM > SCREEN_SIZE[0]-PADDING):
+		if (x+v.width*v.zoom > SCREEN_SIZE[0]-PADDING):
 			#put('x=%d+%d > %d' % (x, v.width*ZOOM, SCREEN_SIZE[0]-PADDING))
 			x = PADDING
-			y += v.height*ZOOM + PADDING
+			y += v.height*v.zoom + PADDING
 		
 		#v.pos = ( PADDING + (i%BANKS_X)*(BANK_WIDTH*ZOOM+PADDING),	PADDING + (i//BANKS_X)*(BANK_HEIGHT*ZOOM+PADDING))
 		v.pos = (x, y)
 		v.draw(screen)
 		v.is_selected = (v == vtv)
-		x += v.width*ZOOM
+		x += PADDING + v.width*v.zoom
 		
 		i += 1
+	
+	vtv_video.pos = (0, vtv.pos[1] + vtv.height*vtv.zoom)
 	
 	put('Starting interceptor...')
 	vtbi = VTechGLCXBusIO()
 	
 	def vtbi_onbus(addr, data, flags):
 		if (burst_dump) or (addr in WATCH_LIST):
-			put('Addr: %06X = %02X' % (addr, data))
+			put('Addr: %06X %01X %02X' % (addr, flags, data))
 		
+		# Let all vis know about it
 		for v in vtvs:
 			v.handle_bus(addr, data, None)
 		
@@ -777,9 +809,11 @@ def run_vis():
 			data = random.randint(0, 255)
 			vtbi_onbus(addr, data, 0xff)
 		else:
+			# Text proto
 			#vtbi.update(count=100 if vtbi.running else 1)
 			#vtbi.update(2)	# Due wants to send bulk, so do not poll it to often
-			vtbi.update_mon(2)	# Due wants to send bulk, so do not poll it to often
+			# Binary proto
+			vtbi.update_binary(2)	# Due wants to send bulk, so do not poll it to often
 		
 		
 		# Maybe update from time to time?
@@ -1008,6 +1042,9 @@ def run_dump(ofs=0, size=0x200, beautify=True, ncs2=True):
 	vtbi = VTechGLCXBusIO()
 	vtbi.start()
 	
+	time.sleep(.5)
+	vtbi.update()
+	
 	# Change the first filename
 	#vtbi.dump(0x00001b80, 0x20)
 	#vtbi.write(0x00001b8c, [ ord(c) for c in 'PYTHON42' ])
@@ -1015,6 +1052,8 @@ def run_dump(ofs=0, size=0x200, beautify=True, ncs2=True):
 	vtbi.pinmode_acquire_r()
 	if ncs2:
 		vtbi.set_ncs2_low()
+	
+	time.sleep(.1)
 	
 	vtbi.dump(ofs, size, beautify=beautify)
 	
@@ -1025,7 +1064,8 @@ def run_dump(ofs=0, size=0x200, beautify=True, ncs2=True):
 	
 	vtbi.stop()
 
-def run_write(src_ofs=0, dst_addr=0, size=None, ncs2=True):
+def run_write(filename_bin, src_ofs=0, dst_addr=0, size=None, ncs2=True):
+	"""
 	# Write contents
 	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.dump.000-efa.bin'
 	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.dump.000-lmu.bin'
@@ -1034,7 +1074,7 @@ def run_write(src_ofs=0, dst_addr=0, size=None, ncs2=True):
 	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.LMU.dedupe.bin'
 	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Nuova_Cartuccia_E-mail/GLCX_Nuova_Cartuccia_E-mail.dump.004.hex.bin'
 	filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_E-Mail-Starter1.5/CART_GLCX_E-Mail-Starter-Version1.5.dump.000-512KB-used.hex.bin'
-	
+	"""
 	
 	with open(filename_bin, 'rb') as h:
 		data = h.read()
@@ -1134,15 +1174,19 @@ def run_mon():
 	vtbi = VTechGLCXBusIO()
 	
 	def vtbi_mon_onbus(addr, data, flags):
+		
+		#if not addr in WATCH_LIST: return
+		#if (addr & 0xff0000) !=  0x080000: return
+		
 		#put('Addr: %06X = %02X' % (addr, data))
-		# Beware! Flags contains the LEVEL, so "1 = nOE is HIGH, 2 = nWR is HIGH"
+		# Beware! Flags reflect the LOGIC LEVEL, so "1 = nOE is HIGH, 2 = nWR is HIGH"
 		#put('Addr: %06X %s %02X' % (addr, ('R' if ((flags&3)==2) else 'W' if ((flags&3)==1) else 'X'), data))
 		#put('Addr: %06X %01X %02X' % (addr, flags, data))
 		flags_str = '%s%s%s%s' % (
-			'.' if ((flags & 1) > 0) else 'r',
-			'.' if ((flags & 2) > 0) else 'w',
-			'.' if ((flags & 4) > 0) else 'c',
-			'.' if ((flags & 8) > 0) else '2',
+			'.' if ((flags & 1) > 0) else 'R',
+			'.' if ((flags & 2) > 0) else 'W',
+			'.' if ((flags & 4) > 0) else 'C',
+			'.' if ((flags & 8) > 0) else 'D',	# aka nCS2
 		)
 		put('Addr: %06X %01X=%s %02X' % (addr, flags, flags_str, data))
 	
@@ -1157,28 +1201,50 @@ def run_mon():
 	
 	#vtbi.monitor_start()
 	
-	# Pin: c=nCE, 2=nCS2, o=nOE, w=nWE
-	# Edge: R=RISING, F=FALLING, C=CHANGE
-	#vtbi.monitor_start_int('2', 'F')
-	vtbi.monitor_start_int('o', 'F')	# Triggers when sound is playing for some reason...
-	#vtbi.monitor_start_int('c', 'C')
+	# Pin: c=nCE, d=nCS2, o=nOE, w=nWE - else ASCII=pin number (45 = A15)
+	# Edge: R=RISING, F=FALLING, C=CHANGE, H=HIGH
+	#vtbi.monitor_start_int('d', 'F')
+	#vtbi.monitor_start_int('o', 'F')	# Triggers when sound is playing for some reason...
 	#vtbi.monitor_start_int('w', 'C')	# Active all the time
+	vtbi.monitor_start_int('c', 'F')	# Nice!
+	#vtbi.monitor_start_int(45, 'H')	# D45 = ADDR15
+	#vtbi.monitor_start()
 	
 	time.sleep(.1)
 	while True:
-		vtbi.update_mon()
+		vtbi.update_binary()
 		
 		time.sleep(.01)
 
 if __name__ == '__main__':
 	#run_mon()
-	run_vis()
+	#run_vis()
 	
 	#run_dump()
-	#run_dump(ofs=0x80000 - 0x2000, size=0x4000)
+	run_dump(size=0x02000)
+	#run_dump(size=0x20000)
+	#run_dump(ofs=0x70000, size=0x20000)
+	#run_dump(ofs=0x80000 - 0x1000, size=0x2000)
 	#run_dump(ofs=0x00000, size=0x200000, beautify=False)	# 2M = 2097152 = 0x200000
 	
-	#run_write(size=1024*64)
+	# Write contents
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.dump.000-efa.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.dump.000-lmu.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Update_Programm-Zusatzkassette/CART_GLCX_Update_Programm-Zusatzkassette.dump.000-oneShort.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.EFA.dedupe.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Englisch_fuer_Anfaenger/CART_GLCX_Englisch_fuer_Anfaenger.LMU.dedupe.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Nuova_Cartuccia_E-mail/GLCX_Nuova_Cartuccia_E-mail.dump.004.hex.bin'
 	
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Update_Programm-Zusatzkassette/CART_GL8008CX_Update.dump.000.seg0-4k.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Update_Programm-Zusatzkassette/CART_GL8008CX_Update.dump.000.seg1-4k.bin'
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Update_Programm-Zusatzkassette/CART_GL8008CX_Update.dump.000.bin'
+	#run_write(filename_bin, src_ofs=0x70000, size=1024*128)
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_Update_Programm-Zusatzkassette/CART_GL8008CX_Update.dump.000.segs.bin'
+	#run_write(filename_bin)
+	
+	#filename_bin = '/z/data/_devices/VTech_Genius_Lerncomputer/Cartridges/GLCX_MagiCam_Zusatzkassette/GLCX_MagiCam.dump.000.dedupe.bin'
+	#run_write(filename_bin, size=1024*128)
+	
+	#run_write(filename_bin, size=1024*64)
 	#run_write(src_ofs=0, dst_addr=0, size=1024*128)
-	#run_dump(size=0x800)
+	#run_dump(size=0x1000)

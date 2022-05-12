@@ -978,25 +978,30 @@ void loop() {
         break;
 
       case 'M':
-        switch(readByte()) {
+        d = readByte();
+        switch(d) {
           case 'c':
-          case 'C':
+          //case 'C':
             int_pin = PIN_nCE;
             break;
             
-          case '2':
+          case 'd':
             int_pin = PIN_nCS2;
             break;
           
           case 'o':
-          case 'O':
+          //case 'O':
             int_pin = PIN_nOE;
             break;
           
           case 'w':
-          case 'W':
+          //case 'W':
             int_pin = PIN_nWR;
             break;
+          
+          default:
+            // Use ASCII code as pin number
+            int_pin = d;
         }
         
                 
@@ -1020,6 +1025,10 @@ void loop() {
           case 'c':
           case 'C':
             attachInterrupt(digitalPinToInterrupt(int_pin), handle_int, CHANGE);
+            break;
+          case 'h':
+          case 'H':
+            attachInterrupt(digitalPinToInterrupt(int_pin), handle_int, HIGH);
             break;
 
         }

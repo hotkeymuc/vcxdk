@@ -291,18 +291,18 @@ void main(void) {
 	// Binary search for start address (as long as we do not have working keyboard input)
 	p = 0x7800;
 	/*
-	if (prompt("Start 0x8000-0xFFFF") == 1) {
+	if (confirm("Start 0x8000-0xFFFF") == 1) {
 		// 0x8000 - 0xFFFF
-		if (prompt("Start 0xC000-0xFFFF") == 1) {
+		if (confirm("Start 0xC000-0xFFFF") == 1) {
 			// 0xC000 - 0xFFFF
-			if (prompt("Start 0xE000-0xFFFF") == 1) {
+			if (confirm("Start 0xE000-0xFFFF") == 1) {
 				p = 0xe000;
 			} else {
 				p = 0xc000;
 			}
 		} else {
 			// 0x8000 - 0xBFFF
-			if (prompt("Start 0xA000-0xBFFF") == 1) {
+			if (confirm("Start 0xA000-0xBFFF") == 1) {
 				p = 0xa000;
 			} else {
 				p = 0x8000;
@@ -310,14 +310,14 @@ void main(void) {
 		}
 	} else {
 		// 0x0000 - 0x7FFF
-		if (prompt("Start 0x4000-0x7FFF") == 1) {
+		if (confirm("Start 0x4000-0x7FFF") == 1) {
 			// 0x4000 - 0x7FFF
-			if (prompt("Start 0x6000-0x7FFF") == 1) {
+			if (confirm("Start 0x6000-0x7FFF") == 1) {
 				// 0x6000 - 0x7FFF
 				//p = 0x6000;
-				if (prompt("Start 0x7000-0x7FFF") == 1) {
+				if (confirm("Start 0x7000-0x7FFF") == 1) {
 					//p = 0x7000;
-					if (prompt("Start 0x7800-0x7FFF") == 1) {
+					if (confirm("Start 0x7800-0x7FFF") == 1) {
 						p = 0x7800;	// 7800 = the most interesing bits!
 					} else {
 						p = 0x7000;
@@ -327,7 +327,7 @@ void main(void) {
 				}
 			} else {
 				// 0x4000 - 0x5FFF
-				if (prompt("Start 0x5000-0x5FFF") == 1) {
+				if (confirm("Start 0x5000-0x5FFF") == 1) {
 					p = 0x5000;
 				} else {
 					p = 0x4000;
@@ -335,7 +335,7 @@ void main(void) {
 			}
 		} else {
 			// 0x0000 - 0x3FFF
-			if (prompt("Start 0x2000-0x3FFF") == 1) {
+			if (confirm("Start 0x2000-0x3FFF") == 1) {
 				p = 0x2000;
 			} else {
 				p = 0x0000;
@@ -354,7 +354,7 @@ void main(void) {
 		y = 0;
 		draw_hex16(0, 0, p);
 		
-		if (prompt("Monitor those addresses?") == 1) {
+		if (confirm("Monitor those addresses?") == 1) {
 			// Monitor for a few frames
 			
 			// Draw labels

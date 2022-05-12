@@ -21,35 +21,6 @@ def put_debug(t):
 	#pass
 	print(t)
 
-
-RAM_START = 0xb700	# Default start for all data inside a non-text section
-
-class DataStore:
-	def __init__(self):
-		self.data = []
-	
-	def clear(self):
-		self.data = []
-	
-	def w8(self, v8):
-		self.data.append(v8)
-	
-	def w16(self, v16):
-		self.w8( v16 & 0x000000ff)
-		self.w8((v16 & 0x0000ff00) >> 8)
-		
-	def w32(self, v32):
-		self.w8( v32 & 0x000000ff)
-		self.w8((v32 & 0x0000ff00) >> 8)
-		self.w8((v32 & 0x00ff0000) >> 16)
-		self.w8((v32 & 0xff000000) >> 24)
-	
-	def get_data(self):
-		return self.data
-	def get_bytes(self):
-		return bytes(self.data)
-
-
 I_BYTE = 0
 I_WORD = 1
 def str_to_format(t):
@@ -205,7 +176,64 @@ def str_to_num(t):
 	return int(t)
 
 
+
+
+
+RAM_START = 0xb700	# Default start for all data inside a non-text section
+
+class DataStore:
+	def __init__(self):
+		self.data = []
+		self.ofs = 0
+	
+	def clear(self):
+		self.data = []
+		self.ofs = 0
+	
+	def w8(self, v8):
+		self.data.append(v8)
+		self.ofs += 1
+	
+	def w16(self, v16):
+		self.w8( v16 & 0x000000ff)
+		self.w8((v16 & 0x0000ff00) >> 8)
+		
+	def w32(self, v32):
+		self.w8( v32 & 0x000000ff)
+		self.w8((v32 & 0x0000ff00) >> 8)
+		self.w8((v32 & 0x00ff0000) >> 16)
+		self.w8((v32 & 0xff000000) >> 24)
+	
+	def get_data(self):
+		return self.data
+	def get_bytes(self):
+		return bytes(self.data)
+
+
+class Section:
+	"""One section, like text, bss2, rdata_2, ..."""
+	
+	def __init__(self, id):
+		self.id = id
+		self.store = DataStore()
+		self.address_start = 0
+		self.labels = {}
+	
+	def register_label(self, name):
+		"""Remember current offset as named label"""
+		self.labels[name] = self.store.ofs
+	
+	def has_label(self, name):
+		return name in self.labels
+	
+	def get_label(self, name):
+		return self.labels[name]
+
+
+
+
 class CR16B_Assembler:
+	"""The assembler"""
 	def __init__(self):
 		self.stor = DataStore()
 		self.pc = 0

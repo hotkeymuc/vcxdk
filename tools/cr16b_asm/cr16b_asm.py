@@ -180,6 +180,8 @@ def str_to_num(t):
 
 
 RAM_START = 0xb700	# Default start for all data inside a non-text section
+ROM_SECTIONS = ['text', '.rdata_2', '.frdat_2']	# Order in which to put the ROM sections into file
+
 
 class DataStore:
 	def __init__(self):
@@ -213,35 +215,47 @@ class DataStore:
 class Section:
 	"""One section, like text, bss2, rdata_2, ..."""
 	
-	def __init__(self, id):
-		self.id = id
+	def __init__(self, name, address=0x000000):
+		self.name = name
 		self.store = DataStore()
-		self.address_start = 0
+		self.address = address
 		self.labels = {}
 	
+	def clear(self):
+		self.store.clear()
+		
+	def get_ofs(self):
+		return self.store.ofs
+	
+	def get_address(self):
+		return self.address + self.get_ofs()
+		
 	def register_label(self, name):
 		"""Remember current offset as named label"""
-		self.labels[name] = self.store.ofs
+		self.labels[name] = self.get_ofs()
 	
 	def has_label(self, name):
 		return name in self.labels
 	
-	def get_label(self, name):
-		return self.labels[name]
-
+	def get_label_address(self, name):
+		return self.address + self.labels[name]
 
 
 
 class CR16B_Assembler:
 	"""The assembler"""
 	def __init__(self):
-		self.stor = DataStore()
-		self.pc = 0
+		#self.stor = DataStore()
+		#self.pc = 0
 		self.align = 2
 		
-		self.labels = {}
+		#self.labels = {}
+		self.constants = {}
 		self.sections = {}
-		self.section = None
+		
+		s = Section('text', address=0x000000)
+		self.sections['text'] = s
+		self.section = s
 	
 	def put(self, t):
 		put(t)
@@ -249,45 +263,82 @@ class CR16B_Assembler:
 	def put_debug(self, t):
 		put_debug(t)
 	
+	def enter_section(self, name):
+		if name in self.sections:
+			section = self.sections[name]
+		else:
+			self.put('New section "%s"!' % name)
+			self.sections[name] = Section(name, address=RAM_START)
+		
+		#self.put_debug('Entering section "%s"...' % name)
+		self.section = self.sections[name]
+	
+	def register_label(self, name):
+		if self.section.has_label(name):
+			self.put_debug('Current section "%s" already has label "%s"' % (self.section.name, name))
+		
+		self.section.register_label(name)
+	
+	def has_label(self, name):
+		for k,section in self.sections.items():
+			if section.has_label(name):
+				return True
+		return False
+	
+	def get_label_address(self, name):
+		for k,section in self.sections.items():
+			if section.has_label(name):
+				return section.get_label_address(name)
+		
+		#self.put('Label "%s" not found in any section (yet).' % name)
+		return None
+	
 	def w_raw(self, v):
 		if type(v) is list:
 			for w in v:
-				self.stor.w8(w)
-				self.pc += 1
+				self.w8(w)
 		else:
-			self.stor.w8(v)
+			self.w8(v)
 	def w8(self, v8):
-		self.stor.w8(v8)
-		self.pc += 1
+		self.section.store.w8(v8)
+		#self.pc += 1
 	def w16(self, v16):
-		self.stor.w16(v16)
-		self.pc += 2
+		self.section.store.w16(v16)
+		#self.pc += 2
 	def w32(self, v32):
-		self.stor.w32(v32)
-		self.pc += 4
+		self.section.store.w32(v32)
+		#self.pc += 4
+	def pad(self, num):
+		for i in range(num):
+			self.w8(0x00)
 	def pad_to_alignment(self, a=None):
 		"""Pad to given alignment"""
 		al = self.align if a is None else a
-		if (self.pc % al) != 0:
+		if (self.section.get_ofs() % al) != 0:
 			put_debug('Padding...')
-			while (self.pc % al) != 0:
+			while (self.section.get_ofs() % al) != 0:
 				self.w8(0x00)
-		
+	
+	
 	def get_data(self):
-		return self.stor.get_data()
+		#return self.stor.get_data()
+		return [ s.store.get_data() for k,s in self.sections.items() ]
 	
 	def dump(self):
 		"""Output data store"""
-		put(' '.join(['%02X'%b for b in self.stor.get_data()]))
+		put(' '.join(['%02X'%b for b in self.get_data()]))
 	
 	def clear(self, keep_labels=False):
-		self.stor.clear()
-		self.sections = {}
-		self.section = None
+		for k,section in self.sections.items():
+			section.store.clear()
+		
+		self.section = self.sections['text']
+		
 		if keep_labels:
 			pass
 		else:
-			self.labels = {}
+			#self.labels = {}
+			self.constants = {}
 	
 	def assemble(self, text, pc=None):
 		"""Parse the given assembly text into a binary blob.
@@ -307,23 +358,45 @@ class CR16B_Assembler:
 			bin, unresolved = self._assemble(text=text, pc=pc)
 			
 			#put('Sections: %s' % str(self.sections))
-			#put('Labels: %s' % str(self.labels))
+			#put('Constants: %s' % str(self.constants))
 			
-			#@TODO: Actually lay-out the sections, then re-resolve the labels
+			#self.put('Relocating ROM sections...')
+			relocated = False
+			old_section = asm.sections[ROM_SECTIONS[0]]
+			for name in ROM_SECTIONS[1:]:	# Only ROM sections / constants
+				if not name in asm.sections: continue
+				section = asm.sections[name]
+				
+				# Pad previous section to alignment
+				if (old_section.get_ofs() % self.align > 0):
+					self.put('Padding ROM section "%s" for relocation...' % old_section.name)
+					while (old_section.get_ofs() % self.align > 0):
+						old_section.w8(0x00)
+				
+				# Put new section after previous one
+				address = old_section.address + old_section.get_ofs()
+				if (address != section.address):
+					self.put('Relocated ROM section "%s" after "%s" to address 0x%06X' % (section.name, old_section.name, address))
+					section.address = address
+					relocated = True
+				
+				# Continue
+				old_section = section
 			
 			# Check if the binary has changed (i.e. another forward-label has been resolved)
 			#self.put_debug(' '.join(['%02X'%b for b in bin]))
-			if bin == bin_old:
+			
+			if (bin == bin_old) and (not relocated):
 				self.put('Output converged after %d(-1) passes.' % pass_num)
 				
 				if len(unresolved) > 0:
 					raise NameError('Finished, but there are unresolvable identifiers left: %s' % str(unresolved))
 				
 				#put('Sections: %s' % str(self.sections))
-				#put('Labels: %s' % str(self.labels))
+				#put('Constants: %s' % str(self.constants))
 				break
 			
-			self.put_debug('Output is still changing. Need to do another pass to verify')
+			self.put_debug('Output is still changing/relocating. Need to do another pass to verify')
 			# Clear the output, but keep the labels
 			self.clear(keep_labels=True)
 		
@@ -336,10 +409,15 @@ class CR16B_Assembler:
 	def _assemble(self, text, pc=None):
 		"""Dirty assembly text parser"""
 		
-		if pc is None:
-			pc = self.pc
-		else:
-			self.pc = pc
+		#if pc is None:
+		#	pc = self.pc
+		#else:
+		#	self.pc = pc
+		if (pc is not None) and (pc != self.section.get_address()):
+			# While testing BRANCH instructions, it is crucial to force a specific value for PC to check displacement encoding
+			# But better shout out what's going on, because it might lead to bad bugs if it happens unnoticed.
+			self.put('Forcing address of section "%s" from 0x%06X to 0x%06X' % (self.section.name, self.section.get_address(), pc))
+			self.section.address += pc - self.section.get_address()
 		
 		unresolved = []	#0
 		#pc_start = pc
@@ -347,8 +425,9 @@ class CR16B_Assembler:
 		line_num = 0
 		for line in text.split('\n'):
 			line_num += 1
-			pc = self.pc	# So we can fiddle around more easily
+			#pc = self.pc	# So we can fiddle around more easily
 			#self.put_debug('Parsing raw input: %06X	%s' % (pc, line))
+			pc = self.section.get_address()
 			
 			# Strip away comments
 			if ';' in line: line = line[:line.index(';')]
@@ -364,44 +443,37 @@ class CR16B_Assembler:
 			
 			# Skip empty lines
 			if line == '': continue
-			# Ignore full-line comments
-			if line[:1] == '#': continue
 			
 			self.put_debug('Parsing:	%06X	%s' % (pc, line))
+			
+			# Skip full-line comments
+			if line[:1] == '#': continue
 			
 			# Remember labels and continue
 			# (These might start with ".", so check this case first. Or else they might get ignored as "ignored directive")
 			if line[-1:] == ':':
 				label_name = line[:-1]
 				
-				if label_name in self.labels:
-					# Already known
-					
-					if self.section is not None:
-						if self.labels[label_name] != self.section:
-							self.put('Label "%s" is already known, but changed from 0x%06X to section=0x%06X...' % (label_name, self.labels[label_name], self.section))
-					else:
-						if self.labels[label_name] != pc:
-							self.put('Label "%s" is already known, but changed from 0x%06X to pc=0x%06X...' % (label_name, self.labels[label_name], pc))
-					#else:
-					#	self.put_debug('Label "%s" is already known and steady at 0x%06X...' % (label_name, self.labels[label_name]))
-				#else:
-				#	# Not yet known
-				#	self.put('Remembering new label "%s" as 0x%06X...' % (label_name, pc))
+				"""
+				old_label_address = self.get_label_address(label_name)
+				new_label_address = self.section.get_address()
 				
-				if self.section is not None:
-					self.labels[label_name] = self.section
-					self.put_debug('Remembering label "%s" as 0x%06X (section)...' % (label_name, self.section))
+				if old_label_address is None:
+					# Not yet known
+					self.put('Remembering new label "%s"...' % label_name)
 				else:
-					# Remember label in code
-					self.labels[label_name] = pc
-					self.put_debug('Remembering label "%s" as 0x%06X (text)...' % (label_name, pc))
-				
+					# Label already known
+					
+					if old_label_address != new_label_address:
+						self.put('Label "%s" is already known, but changed from 0x%06X to 0x%06X...' % (label_name, old_label_address, new_label_address))
+						
+					else:
+						#self.put('Label "%s" is already known and steady at 0x%06X...' % (label_name, old_label_address))
+						continue
+				"""
+				self.register_label(label_name)
 				continue
 			
-			
-			# lower case from now on
-			#line = line.lower()
 			
 			# Parse mnemonic and parameters
 			words = line.split(' ')
@@ -416,35 +488,20 @@ class CR16B_Assembler:
 			elif mnem == '.section':
 				section_name = words[1].split(',')[0]	#params[0]
 				
-				# Ignore sections that we merge directly into code
-				if section_name in ['.rdata_2', '.frdat_2']:
-					# Just use code section
-					self.put_debug('Merging section "%s" into code' % section_name)
-					self.section = None
-					
-				else:
-					# Check if it is a new section
-					if not section_name in self.sections:
-						self.put('New section "%s"' % section_name)
-						
-						# Set it to a RAM address
-						#@FIXME: Do it properly!
-						self.sections[section_name] = RAM_START
-					
-					self.section = self.sections[section_name]
-					self.put_debug('Now in section "%s"' % section_name)
+				#self.put_debug('Changing to section "%s"...' % section_name)
+				self.enter_section(section_name)
 				continue
+				
 			elif mnem == '.text':
-				self.section = None
-				self.put_debug('Now in section TEXT')
+				
+				#self.put_debug('Changing to section TEXT')
+				self.enter_section('text')
 				continue
 				
 			elif mnem == '.space':
-				
 				#@TODO: Reserver space in current section
 				self.put_debug('Reserve %d bytes in section' % int(words[1]))
-				#@FIXME: Do it properly!
-				self.section += int(words[1])
+				self.pad(int(words[1]))
 				continue
 			
 			
@@ -498,22 +555,24 @@ class CR16B_Assembler:
 					#@FIXME: Some mnemonics INTRODUCE a new identifier. Let them handle it and don't force-introduce dummy values!
 					
 					label_name = w
-					if not label_name in self.labels:
+					if label_name in self.constants:
+						label_addr = self.constants[label_name]
+						#self.put_debug('Label "%s" resolved to 0x%06X' % (label_name, label_addr))
+					elif self.has_label(label_name):
+						label_addr = self.get_label_address(label_name)
+					else:
 						#label_addr = 0x1fffff	# Assume far address
 						label_addr = pc + 0x10	# Assume short branch
 						self.put_debug('(Yet) unknown label "%s" at line #%d, pc=0x%06X. Using dummy 0x%06X' % (label_name, line_num, pc, label_addr))
 						
 						unresolved.append(label_name)
-					else:
-						label_addr = self.labels[label_name]
-						#self.put_debug('Label "%s" resolved to 0x%06X' % (label_name, label_addr))
-						
+					
 					params.append(label_addr)
 				
 				elif (w[:1] == '$') and (w[1:] in self.labels):	# Accept "$.something"
 					params.append(self.labels[w[1:]])
-				elif w in self.labels:	# Accept ANY previously defined label
-					params.append(self.labels[w])
+				elif w in self.constants:	# Accept ANY previously defined label
+					params.append(self.constants[w])
 				else:
 					# Remember "as-is"
 					params.append(w)
@@ -555,16 +614,8 @@ class CR16B_Assembler:
 						self.put('Unknown parameter to db/ascii: "%s"?' % str(p))
 				#self.pad_to_alignment()
 			elif mnem == '.align':
-				
-				if self.section is None:
-					# Pad code
-					self.pad_to_alignment(params[0])
-				else:
-					# Pad section
-					while (self.section % params[0]) != 0:
-						#@FIXME: Do it properly!
-						self.section += 1
-				
+				# Pad code
+				self.pad_to_alignment(params[0])
 			elif mnem == '.word':
 				self.w16((0x10000 + params[0]) % 0x10000)
 			elif mnem == '.byte':
@@ -572,8 +623,8 @@ class CR16B_Assembler:
 				#self.pad_to_alignment()
 			elif mnem == '.set':
 				label_name, label_value = words[1].split(',')
-				self.labels[label_name] = int(label_value)
-				
+				self.constants[label_name] = int(label_value)
+			
 			#elif mnem == '.globl':
 			#	label_name = words[1]
 			#	#self.put_debug('Remembering .globl "%s" as 0x%06X' % (label_name, pc))
@@ -586,11 +637,12 @@ class CR16B_Assembler:
 					raise ValueError('Invalid offset! We are already beyond the given address (0x%06X > 0x%06X)!' % (pc, params[0]))
 				else:
 					self.put_debug('Padding %d bytes until offset 0x%06X...' % (d, params[0]))
-					for _ in range(d): self.w8(0x00)
+					self.pad(d)
 				
 			elif (len(words) > 1) and (words[1] == 'equ'):
 				# Define EQU constants
-				self.labels[words[0]] = params[2]
+				#self.labels[words[0]] = params[2]
+				self.constants[label_name] = int(label_value)
 				
 			
 			# CR16B instructions
@@ -713,7 +765,7 @@ class CR16B_Assembler:
 			
 		#
 		
-		return self.stor.get_bytes(), unresolved
+		return self.get_data(), unresolved
 	
 	def assemble_nop(self):
 		self.w16(0x0200)
@@ -1038,8 +1090,10 @@ def assert_assembly(text, bin, pc=0x0000):
 	
 	asm = CR16B_Assembler()
 	#bin2 = asm.assemble(text, pc=pc)
-	bin2, _ = asm._assemble(text, pc=pc)	# Only single pass needed
-	#asm.dump()
+	asm._assemble(text, pc=pc)	# Only single pass needed
+	
+	# Compare the text section
+	bin2 = asm.sections['text'].store.get_bytes()
 	
 	assert len(bin) == len(bin2), 'Assembled binary sizes differs!\nAsserted: %s\nProduced: %s' % (' '.join([ '%02X' % b for b in bin]), ' '.join([ '%02X' % b for b in bin2]))
 	
@@ -1311,7 +1365,7 @@ def test_instructions():
 def test_manual_assembly():
 	"""Assemble by manually calling each method"""
 	asm = CR16B_Assembler()
-	asm.pc = 0x200
+	#asm.pc = 0x200
 	#asm.assemble_movw(0xb700, REG_SP)	# movw    $0xB700, sp
 	asm.assemble_basic_imm_reg_medium(op=OP_MOV, i=I_WORD, imm16=0xb700, dest_reg=REG_SP)
 	asm.assemble_push(reg=REG_R0, count=2)	# push    $2, r0
@@ -1604,7 +1658,7 @@ if __name__ == '__main__':
 	# Add the arguments
 	#argp.add_argument('--input', nargs='+', action='append', type=str, required=True, help='input file(s)')
 	argp.add_argument('--pad', '-p', action='store', type=int, help='Pad output to given size')
-	argp.add_argument('--stats', '-s', action='store_true', help='Show sections/labels')
+	argp.add_argument('--stats', '-s', action='store_true', help='Show sections/constants after assembly')
 	argp.add_argument('--verbose', '-v', action='count', default=0, help='Verbose output')
 	argp.add_argument('--output', '-o', nargs='?', action='store', type=str, help='Output file')
 	argp.add_argument(dest='input', nargs='+', action='append', type=str, help='Input file(s)')
@@ -1630,16 +1684,27 @@ if __name__ == '__main__':
 	
 	put('Assembling...')
 	asm = CR16B_Assembler()
-	bin = asm.assemble(pc=ofs, text=text)
+	asm.assemble(pc=ofs, text=text)
 	
 	if args.stats:
-		put('Sections:%s' % ''.join([ '\n\t* %s: 0x%06X' % (k, v) for k,v in asm.sections.items() ]))
-		put('Labels:%s' % ''.join([ '\n\t* %s: 0x%06X' % (k, v) for k,v in asm.labels.items() ]))
-
+		put('Constants:')
+		for k,c in asm.constants.items():
+			put('\t* %s: 0x%06X / %d' % (k, c, c))
+		
+		put('Sections:')
+		for k,section in asm.sections.items():
+			put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
+		
+	
+	bin = b''
+	for name in ROM_SECTIONS:
+		put('Concatenating ROM section "%s"...' % name)
+		bin = bin + asm.sections[name].store.get_bytes()
 	
 	if output_filename is None:
 		put('Dumping (stdout)...')
-		asm.dump()
+		#asm.dump()
+		put(' '.join(['%02X'%b for b in bin]))
 	else:
 		
 		put('Writing output file "%s"...' % output_filename)

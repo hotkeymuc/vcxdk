@@ -320,13 +320,20 @@ class CR16B_Assembler:
 				self.w8(0x00)
 	
 	
-	def get_data(self):
+	def get_bytes(self):
 		#return self.stor.get_data()
-		return [ s.store.get_data() for k,s in self.sections.items() ]
+		#return [ s.store.get_data() for k,s in self.sections.items() ]
+		bin = b''
+		for name in ROM_SECTIONS:
+			if not name in self.sections: continue
+			self.put_debug('Concatenating ROM section "%s"...' % name)
+			bin = bin + self.sections[name].store.get_bytes()
+		return bin
 	
 	def dump(self):
 		"""Output data store"""
-		put(' '.join(['%02X'%b for b in self.get_data()]))
+		put(' '.join(['%02X'%b for b in self.get_bytes()]))
+	
 	
 	def clear(self, keep_labels=False):
 		for k,section in self.sections.items():
@@ -765,7 +772,7 @@ class CR16B_Assembler:
 			
 		#
 		
-		return self.get_data(), unresolved
+		return self.get_bytes(), unresolved
 	
 	def assemble_nop(self):
 		self.w16(0x0200)
@@ -1696,16 +1703,12 @@ if __name__ == '__main__':
 			put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
 		
 	
-	bin = b''
-	for name in ROM_SECTIONS:
-		put('Concatenating ROM section "%s"...' % name)
-		bin = bin + asm.sections[name].store.get_bytes()
-	
 	if output_filename is None:
 		put('Dumping (stdout)...')
-		#asm.dump()
-		put(' '.join(['%02X'%b for b in bin]))
+		asm.dump()
+		#put(' '.join(['%02X'%b for b in bin]))
 	else:
+		bin = asm.get_bytes()
 		
 		put('Writing output file "%s"...' % output_filename)
 		with open(output_filename, 'wb') as h:

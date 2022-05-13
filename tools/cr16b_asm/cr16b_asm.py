@@ -937,16 +937,31 @@ class CR16B_Assembler:
 				| 0b1
 			)
 			
-		elif (src_reg is not None) and (not src_reg_is_far) and (abs(src_disp) < 32):
-			# LOAD rr (short 5-bit displacement)
-			self.w16(
-				  (0b10 << 14)\
-				| (i << 13)\
-				| (((src_disp & 0b11110) >> 1) << 9)\
-				| (dest_reg << 5)\
-				| (src_reg << 1)\
-				| (src_disp & 0b1)
-			)
+		elif (src_reg is not None) and (not src_reg_is_far) and (src_disp is not None):
+			if (abs(src_disp) < 32):
+				# LOAD rr (short 5-bit displacement)
+				self.w16(
+					  (0b10 << 14)\
+					| (i << 13)\
+					| (((src_disp & 0b11110) >> 1) << 9)\
+					| (dest_reg << 5)\
+					| (src_reg << 1)\
+					| (src_disp & 0b1)
+				)
+			elif abs(src_disp) < (2 << 18):
+				# Medium displacement
+				self.w32(
+					  ((src_disp & 0b001111111111111111) << 16)\
+					| (0b10 << 14)\
+					| (i << 13)\
+					| (0b10 << 11)\
+					| (((src_disp & 0b110000000000000000) >> 16) << 9)\
+					| (dest_reg << 5)\
+					| (src_reg << 1)\
+					| (0b1)
+				)
+			else:
+				raise ValueError('Large register-relative LOAD displacements are not yet supported, sorry!')
 			
 		else:
 			raise TypeError('Parameter combination not yet supported')
@@ -1002,11 +1017,20 @@ class CR16B_Assembler:
 					| (dest_reg << 1)\
 					| (dest_disp & 0b1)
 				)
-			#elif abs(dest_disp) < (128*1024):
-			#	# Medium displacement
-			#	self.w32(
+			elif abs(dest_disp) < (2 << 18):
+				# Medium displacement
+				self.w32(
+					  ((dest_disp & 0b001111111111111111) << 16)\
+					| (0b11 << 14)\
+					| (i << 13)\
+					| (0b10 << 11)\
+					| (((dest_disp & 0b110000000000000000) >> 16) << 9)\
+					| (src_reg << 5)\
+					| (dest_reg << 1)\
+					| (0b1)
+				)
 			else:
-				raise ValueError('Larger register-relative displacements not yet supported')
+				raise ValueError('Large register-relative STOR displacements are not yet supported, sorry!')
 		else:
 			raise TypeError('Parameter combination not yet supported')
 		
@@ -1173,6 +1197,27 @@ def test_instructions():
 	# Test: 033E40:	BE EA      	EABE     	storw   r5, 0xA(sp)
 	assert_assembly('storw   r5, 0xA(sp)', [0xbe, 0xea])
 	
+	# Test: 002552:	1F F0 9C 00	F01F 009C	storw   r0, 0x9C(sp)
+	assert_assembly('storw   r0, 0x9C(sp)', [0x1f, 0xf0, 0x9c, 0x00])
+	# Test: 002556:	3F F0 9E 00	F03F 009E	storw   r1, 0x9E(sp)
+	assert_assembly('storw   r1, 0x9E(sp)', [0x3f, 0xf0, 0x9e, 0x00])
+	
+	# Test: 003154:	1F B0 22 00	B01F 0022	loadw   0x22(sp), r0
+	assert_assembly('loadw   0x22(sp), r0', [0x1f, 0xb0, 0x22, 0x00])
+	# Test: 003158:	3F B0 24 00	B03F 0024	loadw   0x24(sp), r1
+	assert_assembly('loadw   0x24(sp), r1', [0x3f, 0xb0, 0x24, 0x00])
+	# Test: 00316E:	9F B0 32 00	B09F 0032	loadw   0x32(sp), r4
+	assert_assembly('loadw   0x32(sp), r4', [0x9f, 0xb0, 0x32, 0x00])
+	# Test: 003172:	BF B0 34 00	B0BF 0034	loadw   0x34(sp), r5
+	assert_assembly('loadw   0x34(sp), r5', [0xbf, 0xb0, 0x34, 0x00])
+	# Test: 002548:	1F B0 9C 00	B01F 009C	loadw   0x9C(sp), r0
+	assert_assembly('loadw   0x9C(sp), r0', [0x1f, 0xb0, 0x9c, 0x00])
+	# Test: 00254C:	3F B0 9E 00	B03F 009E	loadw   0x9E(sp), r1
+	assert_assembly('loadw   0x9E(sp), r1', [0x3f, 0xb0, 0x9e, 0x00])
+	# Test: 0025A0:	1F B0 A0 00	B01F 00A0	loadw   0xA0(sp), r0
+	assert_assembly('loadw   0xA0(sp), r0', [0x1f, 0xb0, 0xa0, 0x00])
+	# Test: 0025A4:	3F B0 A2 00	B03F 00A2	loadw   0xA2(sp), r1
+	assert_assembly('loadw   0xA2(sp), r1', [0x3f, 0xb0, 0xa2, 0x00])
 	
 	# Test: 033F96:	5F 98 32 79	985F 7932	loadb   0x07932, r2
 	assert_assembly('loadb   0x07932, r2', [0x5f, 0x98, 0x32, 0x79])

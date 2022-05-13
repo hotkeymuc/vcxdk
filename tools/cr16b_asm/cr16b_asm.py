@@ -181,6 +181,12 @@ def str_to_num(t):
 
 RAM_START = 0xb700	# Default start for all data inside a non-text section
 ROM_SECTIONS = ['text', '.rdata_2', '.frdat_2']	# Order in which to put the ROM sections into file
+SECTION_OFFSETS = {
+	'text': 0x000000,
+	'.rdata_2': 0x000000,
+	'.frdat_2': 0x000000,
+	'.bss_2': RAM_START,
+}
 
 
 class DataStore:
@@ -267,8 +273,9 @@ class CR16B_Assembler:
 		if name in self.sections:
 			section = self.sections[name]
 		else:
-			self.put('New section "%s"!' % name)
-			self.sections[name] = Section(name, address=RAM_START)
+			address = SECTION_OFFSETS[name] if name in SECTION_OFFSETS else 0
+			self.put('New section "%s" at 0x%06X!' % (name, address))
+			self.sections[name] = Section(name, address=address)
 		
 		#self.put_debug('Entering section "%s"...' % name)
 		self.section = self.sections[name]

@@ -163,6 +163,7 @@ def str_is_num(t):
 	elif (t[:4] == '$-0x'): return True
 	elif (t[:2] == '$-') and (t[2:].isnumeric()): return True
 	elif (t[:1] == '$') and (t[1:].isnumeric()): return True
+	elif (t[:3] == '-0x'): return True
 	elif (t[:1] == '-') and (t[1:].isnumeric()): return True
 	elif (t[:2] == '0x'): return True
 	return t.isnumeric()
@@ -171,6 +172,7 @@ def str_to_num(t):
 	if   (t[:3] == '$0x'): return int(t[1:], 16)
 	elif (t[:4] == '$-0x'): return -int(t[2:], 16)	#0x10000 - int(t[2:], 16)
 	elif (t[:1] == '$'): return int(t[1:])
+	elif (t[:3] == '-0x'): return -int(t[1:], 16)
 	elif (t[:1] == '-'): return -int(t[1:])
 	elif (t[:2] == '0x'): return int(t,16)
 	return int(t)
@@ -708,6 +710,9 @@ class CR16B_Assembler:
 						if type(params[1]) is int:
 							# STOR reg, abs
 							self.assemble_stor(i=i,	src_reg=str_to_reg(params[0]), src_imm=None,	dest_reg=None, dest_disp=params[1]	)
+						elif ',' in params[1][1]:
+							# STOR reg, disp+regs
+							self.assemble_stor(i=i,	src_reg=str_to_reg(params[0]), src_imm=None,	dest_reg=str_to_reg(params[1][1][1:-1].split(',')[1]), dest_disp=params[1][0], dest_reg_is_far=True	)
 						else:
 							# STOR reg, disp+reg
 							self.assemble_stor(i=i,	src_reg=str_to_reg(params[0]), src_imm=None,	dest_reg=str_to_reg(params[1][1]), dest_disp=params[1][0]	)
@@ -966,7 +971,7 @@ class CR16B_Assembler:
 		else:
 			raise TypeError('Parameter combination not yet supported')
 		
-	def assemble_stor(self, i, src_reg, src_imm, dest_reg, dest_disp):
+	def assemble_stor(self, i, src_reg, src_imm, dest_reg, dest_disp, dest_reg_is_far=False):
 		
 		#@TODO: STOR with register-relative and no displacement and 4-bit immediate
 		#self.assemble_stor_rr(reg= , imm4=params[0])
@@ -1007,7 +1012,7 @@ class CR16B_Assembler:
 				
 		elif (src_reg is not None) and (dest_reg is not None) and (dest_disp is not None):
 			# Reg to Reg-relative
-			if abs(dest_disp) < 32:
+			if (abs(dest_disp) < 32) and (not dest_reg_is_far):
 				# Short displacement (5 bits)
 				self.w16(
 					  (0b11 << 14)\
@@ -1023,7 +1028,7 @@ class CR16B_Assembler:
 					  ((dest_disp & 0b001111111111111111) << 16)\
 					| (0b11 << 14)\
 					| (i << 13)\
-					| (0b10 << 11)\
+					| ((0b11 if dest_reg_is_far else 0b10) << 11)\
 					| (((dest_disp & 0b110000000000000000) >> 16) << 9)\
 					| (src_reg << 5)\
 					| (dest_reg << 1)\
@@ -1202,6 +1207,11 @@ def test_instructions():
 	# Test: 002556:	3F F0 9E 00	F03F 009E	storw   r1, 0x9E(sp)
 	assert_assembly('storw   r1, 0x9E(sp)', [0x3f, 0xf0, 0x9e, 0x00])
 	
+	# Test: 001020:	E5 F8 10 00	F8E5 0010	storw   r7, 0x10(r3,r2)
+	assert_assembly('storw   r7, 0x10(r3,r2)', [0xe5, 0xf8, 0x10, 0x00])
+	# Test: 001008:	A5 F9 04 00	F9A5 0004	storw   era, 0x4(r3,r2)
+	assert_assembly('storw   era, 0x4(r3,r2)', [0xa5, 0xf9, 0x04, 0x00])
+	
 	# Test: 003154:	1F B0 22 00	B01F 0022	loadw   0x22(sp), r0
 	assert_assembly('loadw   0x22(sp), r0', [0x1f, 0xb0, 0x22, 0x00])
 	# Test: 003158:	3F B0 24 00	B03F 0024	loadw   0x24(sp), r1
@@ -1218,6 +1228,10 @@ def test_instructions():
 	assert_assembly('loadw   0xA0(sp), r0', [0x1f, 0xb0, 0xa0, 0x00])
 	# Test: 0025A4:	3F B0 A2 00	B03F 00A2	loadw   0xA2(sp), r1
 	assert_assembly('loadw   0xA2(sp), r1', [0x3f, 0xb0, 0xa2, 0x00])
+	# Test: 037F62:	C9 BF 05 0D	BFC9 0D05	loadw   -0xF2FB(r5,r4), ra
+	assert_assembly('loadw   -0xF2FB(r5,r4), ra', [0xc9, 0xbf, 0x05, 0x0d])
+	# Test: 037F6E:	C3 BF 05 38	BFC3 3805	loadw   -0xC7FB(r2,r1), ra
+	assert_assembly('loadw   -0xC7FB(r2,r1), ra', [0xc3, 0xbf, 0x05, 0x38])
 	
 	# Test: 033F96:	5F 98 32 79	985F 7932	loadb   0x07932, r2
 	assert_assembly('loadb   0x07932, r2', [0x5f, 0x98, 0x32, 0x79])

@@ -6,13 +6,12 @@ It was used to develop/reverse-engineer the low-level screen and keyboard routin
 
 */
 
-//#include <stdio.h>
+#include <stdiomin.h>
 
-#include <vcxdk.h>
-
-#include <memory.h>
-#include <screen.h>
-#include <keyboard.h>
+//#include <vcxdk.h>
+//#include <memory.h>
+//#include <screen.h>
+//#include <keyboard.h>
 //#include <ui.h>
 
 
@@ -157,7 +156,7 @@ void test_pointer(void) {
 	// Test CARTRIDGE_ROM_POINTER()
 	__far char *test = CARTRIDGE_ROM_POINTER(&STR_TITLE);
 	c = *(char *)test;
-	draw_glyph(0, 0, c);
+	screen_draw_glyph(0, 0, c);
 }
 */
 
@@ -210,7 +209,7 @@ void test_ascii(void) {
 	y = 0;
 	for(i = 0; i < 256; i++) {
 		c = (i & 0xff);
-		draw_glyph(x, y, (word)c);
+		screen_draw_glyph(x, y, (word)c);
 		
 		x += 8;
 		if (x >= SCREEN_WIDTH) {
@@ -254,10 +253,10 @@ void test_ports(void) {
 				
 				y = 8;
 				for(j = 0; j < 16; j++) {
-					//draw_hex16(x, y, p2);
-					//draw_glyph(x+4*8, y, (word)'=');
-					draw_hex8(x, y, p2 & 0xff);
-					draw_glyph(x+(2*8), y, (word)'=');
+					//screen_draw_hex16(x, y, p2);
+					//screen_draw_glyph(x+4*8, y, (word)'=');
+					screen_draw_hex8(x, y, p2 & 0xff);
+					screen_draw_glyph(x+(2*8), y, (word)'=');
 					p2++;
 					y += 8;
 				}
@@ -277,10 +276,10 @@ void test_ports(void) {
 					
 					y = 8;
 					for(j = 0; j < 16; j++) {
-						//draw_hex16(x, y, p2);
-						//draw_glyph(x+4*8, y, (word)'=');
-						//draw_hex8(x, y, p2 & 0xff);
-						//draw_glyph(x+(2*8), y, (word)'=');
+						//screen_draw_hex16(x, y, p2);
+						//screen_draw_glyph(x+4*8, y, (word)'=');
+						//screen_draw_hex8(x, y, p2 & 0xff);
+						//screen_draw_glyph(x+(2*8), y, (word)'=');
 						
 						v = mem(p2++);
 						draw_hex8(x, y, v);
@@ -313,38 +312,38 @@ void test_keyboard(void) {
 	
 	x = 0;
 	y = 0;
-	draw_glyph(x, y, 'E'); x += 8;
-	draw_glyph(x, y, 'n'); x += 8;
-	draw_glyph(x, y, 't'); x += 8;
-	draw_glyph(x, y, 'e'); x += 8;
-	draw_glyph(x, y, 'r'); x += 8;
-	draw_glyph(x, y, ' '); x += 8;
-	draw_glyph(x, y, 's'); x += 8;
-	draw_glyph(x, y, 'o'); x += 8;
-	draw_glyph(x, y, 'm'); x += 8;
-	draw_glyph(x, y, 'e'); x += 8;
-	draw_glyph(x, y, 't'); x += 8;
-	draw_glyph(x, y, 'h'); x += 8;
-	draw_glyph(x, y, 'i'); x += 8;
-	draw_glyph(x, y, 'n'); x += 8;
-	draw_glyph(x, y, 'g'); x += 8;
-	draw_glyph(x, y, ':'); x += 8;
-	draw_glyph(x, y, ' '); x += 8;
+	screen_draw_glyph(x, y, 'E'); x += 8;
+	screen_draw_glyph(x, y, 'n'); x += 8;
+	screen_draw_glyph(x, y, 't'); x += 8;
+	screen_draw_glyph(x, y, 'e'); x += 8;
+	screen_draw_glyph(x, y, 'r'); x += 8;
+	screen_draw_glyph(x, y, ' '); x += 8;
+	screen_draw_glyph(x, y, 's'); x += 8;
+	screen_draw_glyph(x, y, 'o'); x += 8;
+	screen_draw_glyph(x, y, 'm'); x += 8;
+	screen_draw_glyph(x, y, 'e'); x += 8;
+	screen_draw_glyph(x, y, 't'); x += 8;
+	screen_draw_glyph(x, y, 'h'); x += 8;
+	screen_draw_glyph(x, y, 'i'); x += 8;
+	screen_draw_glyph(x, y, 'n'); x += 8;
+	screen_draw_glyph(x, y, 'g'); x += 8;
+	screen_draw_glyph(x, y, ':'); x += 8;
+	screen_draw_glyph(x, y, ' '); x += 8;
 	
 	i = 0;
 	do {
-		draw_glyph(x, y, '_');	// Cursor
+		screen_draw_glyph(x, y, '_');	// Cursor
 		
 		c = getchar();
 		i++;
 		
 		if (c == KEY_BACKSPACE) {
-			draw_glyph(x, y, ' ');
+			screen_draw_glyph(x, y, ' ');
 			x -= 8;
 			continue;
 		}
 		
-		draw_glyph(x, y, (byte)c);
+		screen_draw_glyph(x, y, (byte)c);
 		
 		x += 8;
 		if (x >= SCREEN_WIDTH) {
@@ -356,15 +355,49 @@ void test_keyboard(void) {
 }
 */
 
+
+void test_gets(void) {
+	int c;
+	char s[32];
+	char *ps;
+	byte l;
+	
+	ps = &s[0];
+	l = 0;
+	c = 0;
+	while(c != 10) {
+		
+		screen_draw_glyph(screen_x, screen_y, '_');
+		c = getchar();
+		screen_draw_glyph(screen_x, screen_y, ' ');
+		
+		if ((c != 0xff) && (c != 0x00)) {
+			
+			if (c == 8) {
+				if (l > 0) {
+					putchar(8);
+					ps--;
+					l--;
+				}
+			} else {
+				putchar(c);
+				*ps++ = c;
+				l++;
+			}
+		}
+	}
+	*ps++ = 0;
+	puts(s);
+}
+
+
+
 //volatile int bar = 0x7fff;
 //static int foo = 0x1234;
 //char baz[16];
 
 void main(void) {
-	int c;
-	char s[16];
-	char *ps;
-	byte l;
+
 	
 	screen_clear();
 	
@@ -375,31 +408,6 @@ void main(void) {
 	//puts(&baz);
 	
 	while(1) {
-		ps = &s[0];
-		l = 0;
-		c = 0;
-		while(c != 10) {
-			
-			draw_glyph(screen_x, screen_y, '_');
-			c = getchar();
-			draw_glyph(screen_x, screen_y, ' ');
-			
-			if ((c != 0xff) && (c != 0x00)) {
-				
-				if (c == 8) {
-					if (l > 0) {
-						putchar(8);
-						ps--;
-						l--;
-					}
-				} else {
-					putchar(c);
-					*ps++ = c;
-					l++;
-				}
-			}
-		}
-		*ps++ = 0;
-		puts(s);
+		test_gets();
 	}
 }

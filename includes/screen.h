@@ -49,6 +49,17 @@ void screen_scroll(word rows) {
 	}
 }
 
+void screen_set_at(word x, word y, byte col) {
+	byte b;
+	unsigned short *p;
+	p = (unsigned short *)SCREEN_BUFFER + (y * SCREEN_WORDS_PER_ROW);
+	p += (x >> 3);	// 2bpp = 8 pixels per word
+	b = (((x & 0x7) << 2) | 8) & 0xf;	// 16-bit wrap-around: 8, 10, 12, 14, 0, 2, 4, 6
+	*p = (
+		(*p & (0xffff ^ (0x3 << b)))	// ~(0x3 << b)
+		| (col << b)
+	);
+}
 
 /*
 // Manually draw the letter "A"
@@ -70,7 +81,7 @@ mem(SCREEN_BUFFER + 60*7 + 0) = bin(0,0, 0,0, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*
 #define FONT_WIDTH 8
 #define FONT_HEIGHT 8
 
-void draw_glyph(word x, word y, word g) {
+void screen_draw_glyph(word x, word y, word g) {
 	__far byte *dp;
 	byte iy;
 	//unsigned char *p;
@@ -146,27 +157,27 @@ void draw_glyph(word x, word y, word g) {
 
 
 
-void draw_hexdigit(word x, word y, word v) {	// byte v	// ... but we are always passing 16-bit anyway!
+void screen_draw_hexdigit(word x, word y, word v) {	// byte v	// ... but we are always passing 16-bit anyway!
 	if (v <= 0x09)
-		draw_glyph(x  , y, (word)('0'+v));
+		screen_draw_glyph(x  , y, (word)('0'+v));
 	else if (v <= 0x0f)
-		draw_glyph(x  , y, (word)('A'+v-0x0a));
+		screen_draw_glyph(x  , y, (word)('A'+v-0x0a));
 	else
-		draw_glyph(x  , y, (word)'?');
+		screen_draw_glyph(x  , y, (word)'?');
 }
 
 
-void draw_hex8(word x, word y, word v) {	// byte v	// ... but we are always passing 16-bit anyway!
-	draw_hexdigit(x, y, (v >> 4)); x += FONT_WIDTH;
-	draw_hexdigit(x, y, (v & 0x0f));
+void screen_draw_hex8(word x, word y, word v) {	// byte v	// ... but we are always passing 16-bit anyway!
+	screen_draw_hexdigit(x, y, (v >> 4)); x += FONT_WIDTH;
+	screen_draw_hexdigit(x, y, (v & 0x0f));
 }
 
 
-void draw_hex16(word x, word y, word v) {
-	draw_hexdigit(x, y, (v >> 12)      ); x += FONT_WIDTH;
-	draw_hexdigit(x, y, (v >>  8) & 0xf); x += FONT_WIDTH;
-	draw_hexdigit(x, y, (v >>  4) & 0xf); x += FONT_WIDTH;
-	draw_hexdigit(x, y, (v      ) & 0xf);
+void screen_draw_hex16(word x, word y, word v) {
+	screen_draw_hexdigit(x, y, (v >> 12)      ); x += FONT_WIDTH;
+	screen_draw_hexdigit(x, y, (v >>  8) & 0xf); x += FONT_WIDTH;
+	screen_draw_hexdigit(x, y, (v >>  4) & 0xf); x += FONT_WIDTH;
+	screen_draw_hexdigit(x, y, (v      ) & 0xf);
 }
 
 
@@ -197,7 +208,7 @@ void screen_putchar(int c) {
 	} else if (c == 9) {
 		screen_x = ((screen_x >> 5) + 1) << 5;
 	} else {
-		draw_glyph(screen_x, screen_y, (word)c);
+		screen_draw_glyph(screen_x, screen_y, (word)c);
 		screen_x += FONT_WIDTH;
 	}
 	
@@ -215,7 +226,8 @@ void screen_putchar(int c) {
 }
 
 
-void screen_puts(__far char *s) {
+//@FIXME: Not real printf. Just a way to output a pchar
+void screen_printf(__far char *s) {
 	char c;
 	
 	while(1) {
@@ -225,14 +237,7 @@ void screen_puts(__far char *s) {
 		screen_putchar(c);
 	}
 	
-	// Trailing new line as per spec
-	screen_putchar('\n');
 }
-
-#define putchar(c) screen_putchar(c)
-#define puts(s) screen_puts(s)
-
-//void printf(__far const char *format, ...) { }
 
 
 #endif

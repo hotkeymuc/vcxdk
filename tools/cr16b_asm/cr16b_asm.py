@@ -497,7 +497,7 @@ class CR16B_Assembler:
 			
 			
 			# Some "." directives
-			if mnem in ['.file', '.code_label', '.globl']:
+			if mnem in ['.file', '.code_label', '.globl', '.double']:
 				#self.put_debug('Ignoring directive "%s"' % mnem)
 				continue
 			
@@ -778,6 +778,12 @@ class CR16B_Assembler:
 			
 			elif mnem == 'jump':
 				self.assemble_jump(reg_pair=str_to_reg(params[0][1:-1].split(',')[1]))
+			
+			elif mnem == 'jal':
+				self.assemble_jal(
+					lnk_pair=str_to_reg(params[0][1:-1].split(',')[1]),
+					target_pair=str_to_reg(params[1][1:-1].split(',')[1])
+				)
 			
 			else:
 				raise KeyError('Mnemonic "%s" not part of the *very* limited set of supported OpCodes!' % mnem)
@@ -1121,7 +1127,13 @@ class CR16B_Assembler:
 			| 1
 		)
 	
-	#@TODO: JAL
+	def assemble_jal(self, lnk_pair, target_pair):
+		self.w16(
+			  (0b0001011 << 9)\
+			| (lnk_pair << 5)\
+			| (target_pair << 1)\
+			| 0
+		)
 	
 	#@TODO: Bit manipulation
 	
@@ -1378,6 +1390,13 @@ def test_instructions():
 	#asm.assemble_bal(pc=0x00020E, dest=0x1805c4)
 	#asm.assemble_bal(pc=0x000222, dest=0x1805c4)
 	#asm.assemble_bal(pc=0x000538, dest=0x018D18)
+	
+	# Test: 000A48:	66 16      	1666     	jal     (r4,r3), (r4,r3)
+	assert_assembly('jal     (r4,r3), (r4,r3)', [0x66, 0x16], pc=0x000A48)
+	# Test: 0025A8:	A0 17      	17A0     	jal     (ra,era), (r1,r0)
+	assert_assembly('jal     (ra,era), (r1,r0)', [0xa0, 0x17], pc=0x0025A8)
+	# Test: 0151C8:	A4 17      	17A4     	jal     (ra,era), (r3,r2)
+	assert_assembly('jal     (ra,era), (r3,r2)', [0xa4, 0x17], pc=0x0151C8)
 	
 	
 	# Test: JUMP

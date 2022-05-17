@@ -379,7 +379,11 @@ class CR16B_Compiler:
 			if words[0][-1:] == ':':
 				#self.put_debug('Label')
 				self.emit('_%s_%s:' % (def_name, words[0][:-1]))
-			
+				
+				#@FIXME: If jumping backwards (loop) register use must be restored!
+				#@TODO: So: Freeze registers
+				self.put('@TODO: Must store/restore the register usage')
+				
 			elif (len(words) > 2) and (words[1] == '='):
 				#self.put('Assignment')
 				dst_name = words[0]

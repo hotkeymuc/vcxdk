@@ -180,13 +180,17 @@ def str_to_num(t):
 
 
 
+from collections import OrderedDict
 
 RAM_START = 0xb700	# Default start for all data inside a non-text section
 ROM_SECTIONS = ['text', '.rdata_2', '.frdat_2']	# Order in which to put the ROM sections into file
-SECTION_OFFSETS = {
+RAM_SECTIONS = ['.bss_1', '.bss_2']
+
+SECTION_DEFAULT_OFFSETS = {
 	'text': 0x000000,
 	'.rdata_2': 0x000000,
 	'.frdat_2': 0x000000,
+	'.bss_1': RAM_START,
 	'.bss_2': RAM_START,
 }
 
@@ -275,7 +279,7 @@ class CR16B_Assembler:
 		if name in self.sections:
 			section = self.sections[name]
 		else:
-			address = SECTION_OFFSETS[name] if name in SECTION_OFFSETS else 0
+			address = SECTION_DEFAULT_OFFSETS[name] if name in SECTION_DEFAULT_OFFSETS else 0x000000
 			self.put('New section "%s" at 0x%06X!' % (name, address))
 			self.sections[name] = Section(name, address=address)
 		
@@ -328,7 +332,6 @@ class CR16B_Assembler:
 			while (self.section.get_ofs() % al) != 0:
 				self.w8(0x00)
 	
-	
 	def get_bytes(self):
 		#return self.stor.get_data()
 		#return [ s.store.get_data() for k,s in self.sections.items() ]
@@ -356,6 +359,33 @@ class CR16B_Assembler:
 			#self.labels = {}
 			self.constants = {}
 	
+	def relocate(self, section_names):
+		"""Relocate the sections according to order given as parameter (name list)"""
+		
+		relocated = False
+		old_section = asm.sections[section_names[0]]
+		for name in section_names[1:]:	# Only given sections
+			if not name in asm.sections: continue
+			section = asm.sections[name]
+			
+			# Pad previous section to alignment
+			if (old_section.get_ofs() % self.align > 0):
+				self.put('Padding section "%s" (current size: 0x%06X) for relocation...' % (old_section.name, old_section.get_ofs()))
+				while (old_section.get_ofs() % self.align > 0):
+					old_section.store.w8(0x00)
+			
+			# Put new section after previous one
+			address = old_section.address + old_section.get_ofs()
+			if (address != section.address):
+				self.put('Relocated section "%s" after "%s" to address 0x%06X' % (section.name, old_section.name, address))
+				section.address = address
+				relocated = True
+			
+			# Continue
+			old_section = section
+		
+		return relocated
+	
 	def assemble(self, text, pc=None):
 		"""Parse the given assembly text into a binary blob.
 		This is a wrapper around the internal _assemble() method, so we can automatically initiate a multi-pass (for forward jumps).
@@ -376,28 +406,12 @@ class CR16B_Assembler:
 			#put('Sections: %s' % str(self.sections))
 			#put('Constants: %s' % str(self.constants))
 			
-			#self.put('Relocating ROM sections...')
-			relocated = False
-			old_section = asm.sections[ROM_SECTIONS[0]]
-			for name in ROM_SECTIONS[1:]:	# Only ROM sections / constants
-				if not name in asm.sections: continue
-				section = asm.sections[name]
-				
-				# Pad previous section to alignment
-				if (old_section.get_ofs() % self.align > 0):
-					self.put('Padding ROM section "%s" for relocation...' % old_section.name)
-					while (old_section.get_ofs() % self.align > 0):
-						old_section.w8(0x00)
-				
-				# Put new section after previous one
-				address = old_section.address + old_section.get_ofs()
-				if (address != section.address):
-					self.put('Relocated ROM section "%s" after "%s" to address 0x%06X' % (section.name, old_section.name, address))
-					section.address = address
-					relocated = True
-				
-				# Continue
-				old_section = section
+			self.put('Relocating ROM sections...')
+			relocated1 = self.relocate(ROM_SECTIONS)
+			self.put('Relocating RAM sections...')
+			relocated2 = self.relocate(RAM_SECTIONS)
+			
+			relocated = True if relocated1 or relocated2 else False
 			
 			# Check if the binary has changed (i.e. another forward-label has been resolved)
 			#self.put_debug(' '.join(['%02X'%b for b in bin]))
@@ -570,7 +584,13 @@ class CR16B_Assembler:
 					#@FIXME: Better resolve labels later when accessing them, not before
 					#@FIXME: Some mnemonics INTRODUCE a new identifier. Let them handle it and don't force-introduce dummy values!
 					
-					label_name = w
+					# Handle expression
+					if '+' in w:
+						# Omit the expression in name
+						label_name = w[:w.index('+')]
+					else:
+						label_name = w
+					
 					if label_name in self.constants:
 						label_addr = self.constants[label_name]
 						#self.put_debug('Label "%s" resolved to 0x%06X' % (label_name, label_addr))
@@ -582,6 +602,12 @@ class CR16B_Assembler:
 						self.put_debug('(Yet) unknown label "%s" at line #%d, pc=0x%06X. Using dummy 0x%06X' % (label_name, line_num, pc, label_addr))
 						
 						unresolved.append(label_name)
+					
+					# Handle expression afterwards
+					if '+' in w:
+						v = int(w[w.index('+')+1:])
+						self.put_debug('Handling expression (0x%06X + %d)...' % (label_addr, v))
+						label_addr += v
 					
 					params.append(label_addr)
 				
@@ -1783,8 +1809,29 @@ if __name__ == '__main__':
 		for k,c in asm.constants.items():
 			put('\t* %s: 0x%06X / %d' % (k, c, c))
 		
-		put('Sections:')
-		for k,section in asm.sections.items():
+		#put('Sections:')
+		#for k,section in asm.sections.items():
+		#	put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
+		
+		put('ROM Sections:')
+		for name in ROM_SECTIONS:
+			if not name in asm.sections: continue
+			section = asm.sections[name]
+			put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
+		
+		put('RAM Sections:')
+		for name in RAM_SECTIONS:
+			if not name in asm.sections: continue
+			section = asm.sections[name]
+			put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
+		
+		unknown_found = False
+		for name,section in asm.sections.items():
+			if (name in ROM_SECTIONS) or (name in RAM_SECTIONS): continue
+			if unknown_found == False:
+				# Print header only on demand
+				put('Unknown Sections:')
+				unknown_found = True
 			put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
 		
 	
@@ -1795,12 +1842,12 @@ if __name__ == '__main__':
 	else:
 		bin = asm.get_bytes()
 		
-		put('Writing output file "%s"...' % output_filename)
+		put('Writing output file "%s" (0x%06X / %d bytes used)...' % (output_filename, len(bin), len(bin)))
 		with open(output_filename, 'wb') as h:
 			h.write(bin)
 			if pad is not None:
 				l = pad - len(bin)
-				put_debug('Padding %d bytes to fill up %d bytes' % (l, pad))
+				put_debug('Padding 0x%06X / %d bytes to fill up 0x%06X / %d bytes' % (l,l, pad,pad))
 				h.write(bytes([0] * l))
 	
 	

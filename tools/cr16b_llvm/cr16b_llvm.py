@@ -66,7 +66,7 @@ class CR16B_Compiler:
 		#put('clang result=%s' % str(r))
 		
 		if r != 0:
-			raise Error('Compilation using clang failed. r=%s' % str(r))
+			raise Exception('Compilation using clang failed. r=%s' % str(r))
 		
 		if not os.path.isfile(filename_ll):
 			raise ParseErrror('LLVM file "%s" was not created!' % filename_ll)
@@ -162,7 +162,8 @@ class CR16B_Compiler:
 		
 		# Parameters are blocking r2...
 		for i in range(params_count):
-			register_use['r%d' % (2+i)] = True
+			reg_name = 'r%d' % (2+i)
+			register_use[reg_name] = True
 		# r0 is our scratch register and should never be free to use
 		register_use['r0'] = True
 		
@@ -213,6 +214,7 @@ class CR16B_Compiler:
 				if words[2] == 'alloca':
 					#@TODO: Actually reserve some memory on heap
 					#@FIXME: Think about how to actually store the data...
+					#@TODO: Pad according to given "align" parameter?
 					type_text = words[3].replace(',','')
 					if type_text == 'i8*': type_size = 1
 					elif type_text == 'i16*': type_size = 2
@@ -237,10 +239,25 @@ class CR16B_Compiler:
 					if assignments[addr_name]['first_read'] is None:
 						assignments[addr_name]['first_read'] = line_i
 					assignments[addr_name]['last_read'] = line_i
+				
+				elif words[2] in ['icmp', 'mul']:
+					a1_name = words[5].replace(',', '')
+					a2_name = words[6].replace(',', '')
+					
+					if a1_name in assignments:
+						if assignments[a1_name]['first_read'] is None:
+							assignments[a1_name]['first_read'] = line_i
+						assignments[a1_name]['last_read'] = line_i
+					
+					if a2_name in assignments:
+						if assignments[a2_name]['first_read'] is None:
+							assignments[a2_name]['first_read'] = line_i
+						assignments[a2_name]['last_read'] = line_i
+					
 				else:
 					
 					#@TODO: Handle other operations (icmp, mul, ...)
-					put('UNSUPPORTED FOR ASSIGNMENT STATISTICS, YET: %s' % line)
+					raise Exception('UNSUPPORTED FOR ASSIGNMENT STATISTICS, YET: %s' % line)
 					
 			
 			elif words[0] == 'store':
@@ -263,10 +280,18 @@ class CR16B_Compiler:
 				#args = parse_params_text(args_text)
 				
 				#@TODO: Parse call arguments!
-				self.put('@TODO: Call "%s" with args "%s"' % (call_name, args_text))
+				
+				self.put('@TODO: Analyze args of call "%s" to determine register use (last_read):"%s"' % (call_name, args_text))
 				# Update use of parameters
 				# Maybe even pre-select registers?
-				
+				#@FIXME: This is sooooo dirty! Argh!
+				#@TODO: Return value?
+				#@TODO: passed-as-reference are written to!
+				for a_id, assignment in assignments.items():
+					if (a_id+',' in args_text) or (a_id+')' in args_text+')'):
+						if assignment['first_read'] is None:
+							assignment['first_read'] = line_i
+						assignment['last_read'] = line_i
 			
 			#else:
 			#	self.put('Unhandled: %s' % line)
@@ -315,7 +340,8 @@ class CR16B_Compiler:
 					reg_name = assignment['register']
 					#self.put_debug('Can free up %s (%s)' % (a_id, reg_name)))
 					if reg_name in register_use:
-						self.put_debug('Freeing up %s (%s)' % (a_id, reg_name))
+						#self.put_debug('Freeing up %s (%s)' % (a_id, reg_name))
+						
 						#assignment['register'] = None
 						register_use[reg_name] = False
 				
@@ -329,7 +355,7 @@ class CR16B_Compiler:
 			
 			# Check which registers are used for the first time
 			for a_id, assignment in assignments.items():
-				if assignment['first_write'] == line_i:
+				if (assignment['register'] is None) and (assignment['first_write'] == line_i):
 					#self.put_debug('Need to allocate a register for writing to %s' % a_id)
 					
 					found = False
@@ -337,11 +363,11 @@ class CR16B_Compiler:
 						if not reg_used:
 							register_use[reg_name] = True
 							assignment['register'] = reg_name
-							self.put_debug('Allocated register %s for storing %s' % (reg_name, a_id))
+							#self.put_debug('Allocated register %s for storing %s' % (reg_name, a_id))
 							found = True
 							break
 					if not found:
-						raise Error('Ran out of free registers!')
+						raise Exception('Ran out of free registers!')
 			
 			self.put_debug('parse_block:	%d	%s' % (self.line_num, line))
 			# Show commented LLVM IR in S file
@@ -357,6 +383,7 @@ class CR16B_Compiler:
 			elif (len(words) > 2) and (words[1] == '='):
 				#self.put('Assignment')
 				dst_name = words[0]
+				dst_reg = assignments[dst_name]['register']
 				
 				# Ignore "alloca" for now
 				if words[2] == 'alloca':
@@ -370,7 +397,6 @@ class CR16B_Compiler:
 					#addr_i = a_ids.index(addr_name)
 					#self.emit('	loadw %d(sp), r0' % ((addr_i - params_count) * 2))
 					#self.emit('	storw r0, %d(sp)' % ((dst_i - params_count) * 2))
-					dst_reg = assignments[dst_name]['register']
 					addr_reg = assignments[addr_name]['register']
 					if (type(addr_reg) is int):
 						if (type(dst_reg) is int):
@@ -389,8 +415,31 @@ class CR16B_Compiler:
 							# from reg to reg
 							self.emit('	loadw %s, %s' % (addr_reg, dst_reg))
 					
+				elif words[2] == 'icmp':
+					a1_name = words[5].replace(',', '')
+					a2_name = words[6].replace(',', '')
+					
+					#@TODO: compare against immediate!
+					a1_reg = assignments[a1_name]['register']
+					a2_reg = assignments[a2_name]['register']
+					self.emit('	movw %s, %s' % (a1_reg, dst_reg))
+					self.emit('	cmpw %s, %s' % (a2_reg, dst_reg))
+					
+				elif words[2] == 'mul':
+					a1_name = words[5].replace(',', '')
+					a2_name = words[6].replace(',', '')
+					#@TODO: compare against immediate!
+					a1_reg = assignments[a1_name]['register']
+					self.emit('	movw %s, %s' % (a1_reg, dst_reg))
+					
+					if a2_name in a_ids:
+						a2_reg = assignments[a2_name]['register']
+						self.emit('	mulw %s, %s' % (a2_reg, dst_reg))
+					else:
+						self.emit('	mulw $%s, %s' % (a2_name, dst_reg))
+					
 				else:
-					put('UNSUPPORTED, YET: %s' % line)
+					raise Exception('UNSUPPORTED, YET: %s' % line)
 			
 			elif words[0] == 'store':
 				src_name = words[2].replace(',', '')
@@ -428,13 +477,65 @@ class CR16B_Compiler:
 							self.emit('	movw %s, %s' % (src_reg, dst_reg))
 					
 			
+			elif words[0] == 'br':
+				if words[1] == 'label':
+					label_name = words[2].replace('%','')
+					
+					if labels[label_name] == line_i+2:	# clang inserts one new-line before labels
+						self.put_debug('Optimizer: Omitting branch to next line')
+						#self.emit('	; Optimizer omitted branch to next line')
+					else:
+						self.emit('	br	_%s_%s' % (def_name, label_name))
+					
+				elif words[1] == 'i1':
+					cmp_name = words[2].replace(',', '')
+					cmp_reg = assignments[cmp_name]['register']
+					
+					if_name = words[4].replace('%','').replace(',', '')
+					else_name = words[6].replace('%','').replace(',', '')
+					
+					#self.put_debug('line_i=%d, if=%d, else=%d' % (line_i, labels[if_name], labels[else_name]))
+					
+					# If...
+					if labels[if_name] == line_i+2:	# clang inserts one new-line before labels
+						self.put_debug('Optimizer: Switching order to omit branch to next line (else-label)')
+						self.emit('	bne1b	%s, _%s_%s' % (cmp_reg, def_name,else_name))
+						#self.emit('	; Optimizer omitted branch to if-case and negated the comparison')
+					else:
+						self.emit('	beq1b	%s, _%s_%s' % (cmp_reg, def_name,if_name))
+						if labels[else_name] == line_i+2:	# clang inserts one new-line before labels
+							self.put_debug('Optimizer: Omitting branch to next line (else-label)')
+							#self.emit('	; Optimizer omitted branch to else-case in next line')
+						else:
+							# Else...
+							self.emit('	br	_%s_%s' % (def_name, else_name))
+					
+				else:
+					raise Exception('Unknown branching condition in "%s"' % line)
+				
+			elif words[0] == 'call':
+				
+				rest_text = ' '.join(words[2:])
+				call_name = rest_text[:rest_text.index('(')].replace('@', '')
+				args_text = rest_text[rest_text.index('(')+1:rest_text.rindex(')')]
+				
+				self.put('@TODO: Clean up (push/shuffle) registers to make space for args and return value')
+				self.put('@TODO: Make sure the arguments are in their designated argument registers')
+				self.emit('	;@TODO: CALL NOT IMPLEMENTED: %s' % line)
+				self.emit('	bal	(ra,era), _%s' % call_name)
+				
+			
 			elif words[0] == 'ret':
 				
 				if words[1] != 'void':
+					
 					#@TODO: Make sure to set a return value!
-					self.put('Returning a value is not yet implemented! ... I know!')
-					self.emit('	;@TODO: Return "%s"!' % (' '.join(words[1:])))
-					#self.emit('	movw %s, %s' % (r0, dst_reg))
+					v_name = words[2]
+					if v_name in a_ids:
+						v_reg = assignments[v_name]['register']
+						self.emit('	movw	%s, r0	; Return value' % v_reg)
+					else:
+						self.emit('	movw	$%s, r0	; Return value' % v_name)
 				
 				# Fix stack
 				#self.emit('	subw	$-%d,sp' % ((len(assignments) - params_count)*2))
@@ -442,9 +543,10 @@ class CR16B_Compiler:
 				self.emit('	jump	(ra,era)')
 			else:
 				self.put('Unhandled: %s' % line)
+				self.emit('	; Unhandled line: %s' % line)
 		
 		# Emit function epilogue
-		self.emit('; End of function\n\n')
+		self.emit('; End of function "%s"\n\n' % def_name)
 
 
 if __name__ == '__main__':

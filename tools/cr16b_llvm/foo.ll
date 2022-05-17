@@ -16,44 +16,40 @@ define dso_local void @put(i8* %0) #0 {
 }
 
 ; Function Attrs: noinline nounwind optnone uwtable
-define dso_local void @foo(i16 zeroext %0, i16 zeroext %1) #0 {
-  %3 = alloca i16, align 2
-  %4 = alloca i16, align 2
-  store i16 %0, i16* %3, align 2
-  store i16 %1, i16* %4, align 2
-  %5 = load i16, i16* %3, align 2
-  %6 = zext i16 %5 to i32
-  %7 = load i16, i16* %4, align 2
-  %8 = zext i16 %7 to i32
-  %9 = icmp slt i32 %6, %8
-  br i1 %9, label %10, label %11
+define dso_local void @foo(i32 %0, i32 %1) #0 {
+  %3 = alloca i32, align 4
+  %4 = alloca i32, align 4
+  store i32 %0, i32* %3, align 4
+  store i32 %1, i32* %4, align 4
+  %5 = load i32, i32* %3, align 4
+  %6 = load i32, i32* %4, align 4
+  %7 = icmp slt i32 %5, %6
+  br i1 %7, label %8, label %9
 
-10:                                               ; preds = %2
+8:                                                ; preds = %2
   call void @put(i8* getelementptr inbounds ([8 x i8], [8 x i8]* @.str, i64 0, i64 0))
-  br label %12
+  br label %10
 
-11:                                               ; preds = %2
+9:                                                ; preds = %2
   call void @put(i8* getelementptr inbounds ([7 x i8], [7 x i8]* @.str.1, i64 0, i64 0))
-  br label %12
+  br label %10
 
-12:                                               ; preds = %11, %10
+10:                                               ; preds = %9, %8
   ret void
 }
 
 ; Function Attrs: noinline nounwind optnone uwtable
 define dso_local i32 @main() #0 {
-  %1 = alloca i16, align 2
-  %2 = alloca i16, align 2
-  store i16 42, i16* %1, align 2
-  %3 = load i16, i16* %1, align 2
-  %4 = zext i16 %3 to i32
-  %5 = mul nsw i32 %4, 3
-  %6 = trunc i32 %5 to i16
-  store i16 %6, i16* %2, align 2
+  %1 = alloca i32, align 4
+  %2 = alloca i32, align 4
+  store i32 42, i32* %1, align 4
+  %3 = load i32, i32* %1, align 4
+  %4 = mul nsw i32 %3, 3
+  store i32 %4, i32* %2, align 4
   call void @put(i8* getelementptr inbounds ([12 x i8], [12 x i8]* @.str.2, i64 0, i64 0))
-  %7 = load i16, i16* %2, align 2
-  %8 = load i16, i16* %1, align 2
-  call void @foo(i16 zeroext %7, i16 zeroext %8)
+  %5 = load i32, i32* %2, align 4
+  %6 = load i32, i32* %1, align 4
+  call void @foo(i32 %5, i32 %6)
   ret i32 0
 }
 

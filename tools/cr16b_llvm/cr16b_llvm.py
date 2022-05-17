@@ -128,7 +128,8 @@ class CR16B_Compiler:
 		params_count = len(params)
 		start_line_num = self.line_num
 		
-		self.emit('; Function "%s", %d parameters\n' % (name, params_count))
+		self.emit('; Function "%s", %d parameter(s)' % (name, params_count))
+		self.emit('%s:' % name)
 		
 		# Step 1: Pre-process, count number of assignments
 		assignments = params
@@ -152,36 +153,90 @@ class CR16B_Compiler:
 			#else:
 			#	self.put('Unhandled: %s' % line)
 		
-		put('Assignments inside block: %s' % str(assignments))
-		self.emit('; Uses %d assignments\n' % len(assignments))
+		put('Assignments found: %s' % str(assignments))
+		aks = []
+		for a in assignments:
+			aks.append(a)
 		
-		#@TODO: Emit function preamble
-		self.emit('; \n')
+		self.emit('; Uses %d local assignment(s)' % (len(assignments) - params_count))
 		
-		#@TODO: adduw sp, len(assignments)*2
+		# Emit function preamble
+		#self.emit('push    $2, era\n')
 		
-		# Step 2
+		# Make space on stack
+		self.emit('	addw	$-%d,sp' % ((len(assignments) - params_count) * 2))
+		
+		# Copy parameters to local assignments
+		#for i in range(params_count):
+		#	self.emit('	storw	r%d,0(sp)' % (2+i))
+		
+		# Step 2: Parse instructions
 		self.line_num = start_line_num
 		while True:
 			line = self.get_next_line()
 			if line is None: break
 			if line == '': continue
 			if line == '}': break
+			
 			self.put_debug('parse_block:	%d	%s' % (self.line_num, line))
+			# Show commented LLVM IR in S file
+			#self.emit('; %d	%s' % (self.line_num, line))
 			
 			words = line.split(' ')
 			
 			if words[0][-1:] == ':':
-				self.put_debug('Label')
+				#self.put_debug('Label')
+				self.emit('label_%s:' % words[0][:-1])
+			
 			elif (len(words) > 2) and (words[1] == '='):
 				#self.put('Assignment')
 				name = words[0]
+				
+				# Ignore "alloca" for now
+				if words[2] == 'alloca':
+					continue
+				
+				elif words[2] == 'load':
+					dst_name = words[0]
+					dst_i = aks.index(dst_name)
+					
+					addr_name = words[5].replace(',', '')
+					addr_i = aks.index(addr_name)
+					self.emit('	loadw %d(sp), r0' % ((addr_i - params_count) * 2))
+					self.emit('	storw r0, %d(sp)' % ((dst_i - params_count) * 2))
+				else:
+					put('UNSUPPORTED, YET: %s' % line)
+			
+			elif words[0] == 'store':
+				dst_name = words[4].replace(',', '')
+				dst_i = aks.index(dst_name)
+				
+				src_name = words[2].replace(',', '')
+				if (not src_name in aks):
+					# Immediate!
+					imm = int(src_name)
+					self.emit('	movw $%d, %d(sp)' % (imm, (dst_i - params_count) * 2))
+				else:
+					src_i = aks.index(src_name)
+					if src_i <= params_count:
+						self.emit('	storw r%d, %d(sp)' % (2+src_i, (dst_i - params_count) * 2))
+					else:
+						self.emit('	loadw %d(sp), r0' % ((src_i - params_count) * 2))
+						self.emit('	storw r0, %d(sp)' % ((dst_i - params_count) * 2))
+			
+			elif words[0] == 'ret':
+				
+				#@TODO: Make sure to set a return value!
+				self.emit('	;@TODO: Return something?')
+				
+				# Fix stack
+				self.emit('	subw	$-%d,sp' % ((len(assignments) - params_count)*2))
+				self.emit('	jump	(ra,era)')
 			else:
 				self.put('Unhandled: %s' % line)
 		
-		#@TODO: Emit function epilogue
-		#@TODO: adduw sp, len(assignments)*2
-		
+		# Emit function epilogue
+		self.emit('; End of function\n\n')
 
 
 if __name__ == '__main__':

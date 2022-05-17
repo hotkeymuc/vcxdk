@@ -2,6 +2,18 @@
 #define __STRINGMIN_H
 
 //#include <string.h>	// For strcmp
+
+//int strlen(__far const char *c) {
+int strlen(const char *c) {
+	int l;
+	l = 0;
+	while (*c++ != 0)  {
+		l++;
+	}
+	return l;
+}
+
+
 byte strcmp(const char *cs, const char *ct) {
 	while ((*cs != 0) && (*ct != 0)) {
 		if (*cs++ != *ct++) return 1;

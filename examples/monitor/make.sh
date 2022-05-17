@@ -118,7 +118,7 @@ fi
 echo Assembling \"${INPUT_BASENAME}.bin\"...
 # Turn the generated assembly into a binary file
 #python3 ${CR16BASM_PATH}/cr16b_asm.py --verbose --output ${INPUT_BASENAME}.bin cart_header.asm ${INPUT_BASENAME}.s
-python3 ${CR16BASM_PATH}/cr16b_asm.py --output ${INPUT_BASENAME}.bin --pad ${BINARY_SIZE} ${HEADER_FILENAME} ${INPUT_BASENAME}.s
+python3 ${CR16BASM_PATH}/cr16b_asm.py --stats --output ${INPUT_BASENAME}.bin --pad ${BINARY_SIZE} ${HEADER_FILENAME} ${INPUT_BASENAME}.s
 
 
 # Disassemble the result to check

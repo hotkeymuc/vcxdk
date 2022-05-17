@@ -4,7 +4,8 @@ typedef unsigned short word;
 
 void put(const char *s) {
 }
-void foo(word x, word y) {
+
+void foo(int x, int y) {
 	if (x < y) {
 		put("smaller");
 	} else {
@@ -15,8 +16,8 @@ void foo(word x, word y) {
 const byte life = 42;
 
 int main(void) {
-	word a;
-	word b;
+	int a;
+	int b;
 	
 	a = life;
 	b = a * 3;

@@ -14,6 +14,7 @@ Barebones input/output
 // Use screen
 #define putchar(c) screen_putchar(c)
 #define printf(c) screen_printf(c)
+#define clear() screen_clear()
 
 
 void puts(__far char* s) {
@@ -69,14 +70,23 @@ char *gets(char *s) {
 	return s;
 }
 
-//int strlen(__far const char *c) {
-int strlen(const char *c) {
-	int l;
-	l = 0;
-	while (*c++ != 0)  {
-		l++;
-	}
-	return l;
+void printf_x(word v) {	// byte v	// ... but we are always passing 16-bit anyway!
+	if (v <= 0x09)
+		putchar((int)('0'+v));
+	else if (v <= 0x0f)
+		putchar((int)('A'+v-0x0a));
+	else
+		putchar((int)'?');
+}
+void printf_x2(word v) {	// byte v	// ... but we are always passing 16-bit anyway!
+	printf_x(v >> 4);
+	printf_x(v & 0x0f);
+}
+void printf_x4(word v) {
+	printf_x(v >> 12);
+	printf_x((v >> 8) & 0x0f);
+	printf_x((v >> 4) & 0x0f);
+	printf_x(v & 0x0f);
 }
 
 /*

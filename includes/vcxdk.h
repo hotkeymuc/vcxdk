@@ -6,6 +6,10 @@ typedef unsigned short word;
 typedef unsigned long int dword;
 typedef unsigned short size_t;
 
+#define NULL (void *)0
+#define true 1
+#define false 0
+
 //#include "memory.h"
 //#include "screen.h"
 //#include "keyboard.h"

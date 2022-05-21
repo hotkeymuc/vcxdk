@@ -30,6 +30,17 @@ def parse_type(type_text):
 	return r
 
 def parse_params_text(params_text):
+	
+	#@FIXME: This brute-forcibly removes "getelementptr inbounds (...)"
+	while 'getelementptr' in params_text:
+		p = params_text.index('getelementptr')
+		p2 = params_text.index(')', p)
+		words = params_text[p:p2].split(' ')
+		name = words[-5].replace(',','')
+		#put_debug('removing getelementptr from "%s"...' % params_text)
+		params_text = params_text[:p] + name + params_text[p2+1:]
+		#put_debug('... it became "%s"' % params_text)
+	
 	words = params_text.split(',')
 	r = OrderedDict()
 	for w in words:
@@ -331,21 +342,31 @@ class CR16B_LLVM_IR_Compiler:
 				
 				call_name = rest_text[:rest_text.index('(')]
 				args_text = rest_text[rest_text.index('(')+1:rest_text.rindex(')')]
-				#args = parse_params_text(args_text)
 				
-				#@TODO: Parse call arguments!
 				
-				self.put('@TODO: Analyze args of call "%s" to determine register use (last_read):"%s"' % (call_name, args_text))
 				# Update use of parameters
 				# Maybe even pre-select registers?
+				
+				args = parse_params_text(args_text)
+				for a_id in args.keys():
+					if a_id in assignments:
+						assignment = assignments[a_id]
+						#self.put_debug('Found use of id "%s" in args' % a_id)
+						if assignment['first_read'] is None:
+							assignment['first_read'] = line_i
+						assignment['last_read'] = line_i
+				
+				"""
 				#@FIXME: This is sooooo dirty! Argh!
 				#@TODO: Return value?
 				#@TODO: passed-as-reference are written to!
 				for a_id, assignment in assignments.items():
 					if (a_id+',' in args_text) or (a_id+')' in args_text+')'):
+						self.put_debug('Found use of id "%s" in args' % a_id)
 						if assignment['first_read'] is None:
 							assignment['first_read'] = line_i
 						assignment['last_read'] = line_i
+				"""
 			
 			#else:
 			#	self.put('Unhandled: %s' % line)
@@ -354,6 +375,15 @@ class CR16B_LLVM_IR_Compiler:
 		self.put('Assignments:')
 		a_ids = []
 		for a_id, assignment in assignments.items():
+			last_use = None
+			if (assignment['last_write'] is not None):
+				last_use = assignment['last_write']
+			if (assignment['last_read'] is not None):
+				if last_use is None:
+					last_use = assignment['last_read']
+				else:
+					last_use = max(last_use, assignment['last_read'])
+			assignment['last_use'] = last_use
 			a_ids.append(a_id)
 			self.put('	* %s: %s' % (a_id, str(assignment)))
 		
@@ -382,17 +412,12 @@ class CR16B_LLVM_IR_Compiler:
 		while True:
 			# Check if we can free some registers
 			for a_id, assignment in assignments.items():
-				last_use = None
-				if (assignment['last_write'] is not None):
-					last_use = assignment['last_write']
-				if (assignment['last_read'] is not None):
-					if last_use is None:
-						last_use = assignment['last_read']
-					else:
-						last_use = max(last_use, assignment['last_read'])
-				if last_use == line_i:
+				
+				#@TODO: Check loop_labels - registers set before loop must be frozen!
+				# This must check if the variable was set before loop and read inside loop
+				if assignment['last_use'] == line_i:
 					reg_name = assignment['register']
-					#self.put_debug('Can free up %s (%s)' % (a_id, reg_name)))
+					#self.put_debug('Can free up %s (%s)' % (a_id, reg_name))
 					if reg_name in register_use:
 						#self.put_debug('Freeing up %s (%s)' % (a_id, reg_name))
 						
@@ -436,9 +461,10 @@ class CR16B_LLVM_IR_Compiler:
 				loop_comment = '' if not label_name in loop_labels else '	; Start of loop'
 				self.emit('_%s_%s:%s' % (def_name, label_name, loop_comment))
 				
-				#@FIXME: If jumping backwards (loop) register use must be restored!
-				#@TODO: So: Freeze registers
-				self.put('@TODO: Must store/restore the register usage')
+				if label_name in loop_labels:
+					#@FIXME: If jumping backwards (loop) register use must be restored!
+					#@TODO: So: Freeze registers inside the scope of this loop
+					self.put('@TODO: Must store/restore/freeze register usage at begin of loop!')
 				
 			elif (len(words) > 2) and (words[1] == '='):
 				#self.put('Assignment')
@@ -465,7 +491,7 @@ class CR16B_LLVM_IR_Compiler:
 							self.emit('	storw %s, %d(sp)' % ('r0', dst_reg))
 						else:
 							# from mem to reg
-							self.emit('	loadw %d(sp), %s' % (addr_reg, dst_reg))
+							self.emit('	loadw %d(sp), %s	; %s' % (addr_reg, dst_reg, dst_name))
 					else:
 						if (type(dst_reg) is int):
 							# from reg to mem
@@ -473,7 +499,7 @@ class CR16B_LLVM_IR_Compiler:
 							self.emit('	storw %s, %d(sp)' % ('r0', dst_reg))
 						else:
 							# from reg to reg
-							self.emit('	loadw %s, %s' % (addr_reg, dst_reg))
+							self.emit('	loadw %s, %s	; %s' % (addr_reg, dst_reg, dst_name))
 					
 				elif words[2] == 'icmp':
 					a1_name = words[5].replace(',', '')
@@ -484,11 +510,11 @@ class CR16B_LLVM_IR_Compiler:
 					if a2_name in assignments:
 						a2_reg = assignments[a2_name]['register']
 						self.emit('	movw %s, %s' % (a1_reg, dst_reg))
-						self.emit('	cmpw %s, %s' % (a2_reg, dst_reg))
+						self.emit('	cmpw %s, %s	; %s' % (a2_reg, dst_reg, dst_name))
 					else:
 						# a2 is immediate
 						self.emit('	movw %s, %s' % (a1_reg, dst_reg))
-						self.emit('	cmpw $%s, %s' % (a2_name, dst_reg))
+						self.emit('	cmpw $%s, %s	; %s' % (a2_name, dst_reg, dst_name))
 					
 				elif words[2] in ['mul', 'add']:
 					a1_name = words[5].replace(',', '')
@@ -502,9 +528,9 @@ class CR16B_LLVM_IR_Compiler:
 					
 					if a2_name in a_ids:
 						a2_reg = assignments[a2_name]['register']
-						self.emit('	%s %s, %s' % (op, a2_reg, dst_reg))
+						self.emit('	%s %s, %s	; %s' % (op, a2_reg, dst_reg, dst_name))
 					else:
-						self.emit('	%s $%s, %s' % (op, a2_name, dst_reg))
+						self.emit('	%s $%s, %s	; %s' % (op, a2_name, dst_reg, dst_name))
 					
 				else:
 					raise Exception('UNSUPPORTED, YET: %s' % line)
@@ -550,8 +576,9 @@ class CR16B_LLVM_IR_Compiler:
 					label_name = words[2].replace('%','')
 					
 					if labels[label_name] == line_i+2:	# clang inserts one new-line before labels
-						self.put_debug('Optimizer: Omitting branch to next line')
+						#self.put_debug('Optimizer: Omitting branch to next line')
 						#self.emit('	; Optimizer omitted branch to next line')
+						pass
 					else:
 						loop_comment = '' if not label_name in loop_labels else '	; Jump back to loop'
 						self.emit('	br	_%s_%s%s' % (def_name, label_name, loop_comment))
@@ -567,7 +594,7 @@ class CR16B_LLVM_IR_Compiler:
 					
 					# If...
 					if labels[if_name] == line_i+2:	# clang inserts one new-line before labels
-						self.put_debug('Optimizer: Switching order to omit branch to next line (else-label)')
+						#self.put_debug('Optimizer: Switching order to omit branch to next line (else-label)')
 						loop_comment = '' if not else_name in loop_labels else '	; Jump back to loop'
 						self.emit('	bne1b	%s, _%s_%s%s' % (cmp_reg, def_name,else_name, loop_comment))
 						#self.emit('	; Optimizer omitted branch to if-case and negated the comparison')
@@ -575,8 +602,9 @@ class CR16B_LLVM_IR_Compiler:
 						loop_comment = '' if not if_name in loop_labels else '	; Jump back to loop'
 						self.emit('	beq1b	%s, _%s_%s%s' % (cmp_reg, def_name,if_name, loop_comment))
 						if labels[else_name] == line_i+2:	# clang inserts one new-line before labels
-							self.put_debug('Optimizer: Omitting branch to next line (else-label)')
+							#self.put_debug('Optimizer: Omitting branch to next line (else-label)')
 							#self.emit('	; Optimizer omitted branch to else-case in next line')
+							pass
 						else:
 							# Else...
 							loop_comment = '' if not else_name in loop_labels else '	; Jump back to loop'
@@ -591,9 +619,19 @@ class CR16B_LLVM_IR_Compiler:
 				call_name = rest_text[:rest_text.index('(')].replace('@', '')
 				args_text = rest_text[rest_text.index('(')+1:rest_text.rindex(')')]
 				
-				self.put('@TODO: Clean up (push/shuffle) registers to make space for args and return value')
-				self.put('@TODO: Make sure the arguments are in their designated argument registers')
-				self.emit('	;@TODO: CALL NOT IMPLEMENTED: %s' % line)
+				#@TODO: Clean up (push/shuffle) registers to make space for args and return value
+				#@TODO: Make sure the arguments are in their designated argument registers
+				self.emit('	;@TODO: CALL NOT YET FULLY IMPLEMENTED: %s' % line)
+				
+				args = parse_params_text(args_text)
+				for a_i, a_id in enumerate(args):
+					if a_id in assignments:
+						assignment = assignments[a_id]
+						self.emit('	; parameter: %s must be in r%d	; %s' % (assignment['register'], 2+a_i, a_id))
+					else:
+						self.emit('	; parameter: %s must be in r%d' % (a_id, 2+a_i))
+						
+				
 				self.emit('	bal	(ra,era), _%s' % call_name)
 				
 			

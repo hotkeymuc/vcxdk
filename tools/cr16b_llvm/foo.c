@@ -18,9 +18,13 @@ const byte life = 42;
 int main(void) {
 	int a;
 	int b;
+	int i;
 	
 	a = life;
-	b = a * 3;
+	b = life * 99;
+	for(i = 0; i < 10; i++) {
+		a = a * 3;
+	}
 	
 	put("Hello world");
 	foo(b, a);

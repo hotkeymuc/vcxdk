@@ -169,6 +169,7 @@ class CR16B_LLVM_IR_Compiler:
 						'first_write': line_i,
 						'last_write': line_i,
 						'text': params_texts[param_id],
+						'wishes': {},
 					}
 				self.parse_block(def_name=name, params=params)
 			
@@ -246,6 +247,7 @@ class CR16B_LLVM_IR_Compiler:
 						'last_read': None,
 						'first_write': line_i,
 						'last_write': line_i,
+						'wishes': {},
 						
 					}
 				
@@ -348,31 +350,20 @@ class CR16B_LLVM_IR_Compiler:
 				# Maybe even pre-select registers?
 				
 				args = parse_params_text(args_text)
-				for a_id in args.keys():
+				for a_i, a_id in enumerate(args.keys()):
 					if a_id in assignments:
 						assignment = assignments[a_id]
 						#self.put_debug('Found use of id "%s" in args' % a_id)
 						if assignment['first_read'] is None:
 							assignment['first_read'] = line_i
 						assignment['last_read'] = line_i
-				
-				"""
-				#@FIXME: This is sooooo dirty! Argh!
-				#@TODO: Return value?
-				#@TODO: passed-as-reference are written to!
-				for a_id, assignment in assignments.items():
-					if (a_id+',' in args_text) or (a_id+')' in args_text+')'):
-						self.put_debug('Found use of id "%s" in args' % a_id)
-						if assignment['first_read'] is None:
-							assignment['first_read'] = line_i
-						assignment['last_read'] = line_i
-				"""
+						assignment['wishes'][line_i] = 'r%d' % (2+a_i)
 			
 			#else:
 			#	self.put('Unhandled: %s' % line)
 		
 		#put('Assignments found: %s' % str(assignments))
-		self.put('Assignments:')
+		self.put_debug('Assignments:')
 		a_ids = []
 		for a_id, assignment in assignments.items():
 			last_use = None
@@ -413,13 +404,28 @@ class CR16B_LLVM_IR_Compiler:
 			# Check if we can free some registers
 			for a_id, assignment in assignments.items():
 				
-				#@TODO: Check loop_labels - registers set before loop must be frozen!
-				# This must check if the variable was set before loop and read inside loop
-				if assignment['last_use'] == line_i:
+				#if assignment['last_use'] == line_i+1:	# free up for instant reassignment
+				if assignment['last_use'] == line_i:	# free up AFTER instruction
 					reg_name = assignment['register']
-					#self.put_debug('Can free up %s (%s)' % (a_id, reg_name))
+					#self.put_debug('Could potentially free up %s (%s)' % (a_id, reg_name))
+					
+					# Check loop_labels - registers set before loop must be frozen!
+					# This must check if the variable was set before loop and read inside/after loop
+					used_in_loop = False
+					for label_name, loop_end in loop_labels.items():
+						if loop_end < line_i: continue
+						loop_start = labels[label_name]
+						if loop_start > line_i: continue
+						if assignment['first_write'] > loop_start: continue
+						if assignment['last_use'] < loop_start: continue
+						#self.put_debug('Do not free up, it is used in loop!')
+						used_in_loop = True
+						break
+					
+					if used_in_loop: continue
+					
 					if reg_name in register_use:
-						#self.put_debug('Freeing up %s (%s)' % (a_id, reg_name))
+						self.put_debug('Freeing up %s (%s)' % (a_id, reg_name))
 						
 						#assignment['register'] = None
 						register_use[reg_name] = False
@@ -437,14 +443,30 @@ class CR16B_LLVM_IR_Compiler:
 				if (assignment['register'] is None) and (assignment['first_write'] == line_i):
 					#self.put_debug('Need to allocate a register for writing to %s' % a_id)
 					
+					# Check if the preprocessor articulated some register usage wishes
 					found = False
-					for reg_name, reg_used in register_use.items():
-						if not reg_used:
-							register_use[reg_name] = True
-							assignment['register'] = reg_name
-							#self.put_debug('Allocated register %s for storing %s' % (reg_name, a_id))
+					for wli in sorted(assignment['wishes'].keys()):
+						if wli < line_i: continue
+						wish = assignment['wishes'][wli]
+						self.put_debug('Wish: %s should be "%s" in line %d' % (a_id, wish, wli))
+						if (wish in register_use) and (not register_use[wish]):
+							self.put_debug('Wish granted!')
+							assignment['register'] = wish
 							found = True
 							break
+						else:
+							self.put_debug('Wish register is unavailable')
+					
+					if not found:
+						# Get the next best register
+						for reg_name, reg_used in register_use.items():
+							if not reg_used:
+								register_use[reg_name] = True
+								assignment['register'] = reg_name
+								#self.put_debug('Allocated register %s for storing %s' % (reg_name, a_id))
+								found = True
+								break
+					
 					if not found:
 						raise Exception('Ran out of free registers!')
 			

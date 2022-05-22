@@ -46,14 +46,14 @@ OP_MOV  = 0b01100	# movX
 OP_MOVX = 0b10100	# movxX
 OP_MOVZ = 0b10101	# movzX - kinda special...
 
-OP_AND = 0b11000
+OP_AND = 0b01000
 OP_OR  = 0b01110
 OP_XOR = 0b00110
 OP_LSH = 0b00101
 OP_ASHU = 0b00100	# ashuX
 
 OP_MUL = 0b00011
-#OP_MULS = 0b00011
+OP_MULS = 0b00011
 
 OP_PUSH = 0b0110
 OP_POP  = 0b0110	# Same as PUSH! But param differs
@@ -74,7 +74,7 @@ OP_BASICS = {
 	'subc': OP_SUBC,
 	
 	'mul' : OP_MUL,
-	#'muls': OP_MULS,
+	'muls': OP_MULS,
 	
 	'cmp' : OP_CMP,
 	
@@ -288,7 +288,7 @@ class CR16B_Assembler:
 	
 	def register_label(self, name):
 		if self.section.has_label(name):
-			self.put_debug('Current section "%s" already has label "%s"' % (self.section.name, name))
+			self.put_debug('Current section "%s" already knows label "%s"' % (self.section.name, name))
 		
 		self.section.register_label(name)
 	
@@ -333,12 +333,13 @@ class CR16B_Assembler:
 				self.w8(0x00)
 	
 	def get_bytes(self):
+		"""Returns the concatenated ROM section bytes"""
 		#return self.stor.get_data()
 		#return [ s.store.get_data() for k,s in self.sections.items() ]
 		bin = b''
 		for name in ROM_SECTIONS:
 			if not name in self.sections: continue
-			self.put_debug('Concatenating ROM section "%s"...' % name)
+			#self.put_debug('Concatenating ROM section "%s"...' % name)
 			bin = bin + self.sections[name].store.get_bytes()
 		return bin
 	
@@ -381,14 +382,14 @@ class CR16B_Assembler:
 			
 			# Pad previous section to alignment
 			if (old_section.get_ofs() % self.align > 0):
-				self.put('Padding section "%s" (current size: 0x%06X) for relocation...' % (old_section.name, old_section.get_ofs()))
+				self.put_debug('Padding section "%s" (current size: 0x%06X) for relocation...' % (old_section.name, old_section.get_ofs()))
 				while (old_section.get_ofs() % self.align > 0):
 					old_section.store.w8(0x00)
 			
 			# Put new section after previous one
 			address = old_section.address + old_section.get_ofs()
 			if (address != section.address):
-				self.put('Relocated section "%s" after "%s" to address 0x%06X' % (section.name, old_section.name, address))
+				self.put_debug('Relocated section "%s" after "%s" to address 0x%06X' % (section.name, old_section.name, address))
 				section.address = address
 				relocated = True
 			
@@ -417,9 +418,9 @@ class CR16B_Assembler:
 			#put('Sections: %s' % str(self.sections))
 			#put('Constants: %s' % str(self.constants))
 			
-			self.put('Relocating ROM sections...')
+			self.put_debug('Relocating ROM sections...')
 			relocated1 = self.relocate(ROM_SECTIONS)
-			self.put('Relocating RAM sections...')
+			self.put_debug('Relocating RAM sections...')
 			relocated2 = self.relocate(RAM_SECTIONS)
 			
 			relocated = True if relocated1 or relocated2 else False
@@ -457,7 +458,8 @@ class CR16B_Assembler:
 		if (pc is not None) and (pc != self.section.get_address()):
 			# While testing BRANCH instructions, it is crucial to force a specific value for PC to check displacement encoding
 			# But better shout out what's going on, because it might lead to bad bugs if it happens unnoticed.
-			self.put('Forcing address of section "%s" from 0x%06X to 0x%06X' % (self.section.name, self.section.get_address(), pc))
+			
+			#self.put_debug('Forcing address of section "%s" from 0x%06X to 0x%06X' % (self.section.name, self.section.get_address(), pc))
 			self.section.address += pc - self.section.get_address()
 		
 		unresolved = []	#0
@@ -698,7 +700,7 @@ class CR16B_Assembler:
 				self.constants[label_name] = int(label_value)
 				
 			
-			# CR16B instructions
+			### CR16B instructions
 			elif mnem == 'nop':
 				self.assemble_nop()
 			elif mnem == 'di':
@@ -707,8 +709,67 @@ class CR16B_Assembler:
 				self.w16(0x7dfe)
 			elif mnem == 'wait':
 				self.w16(0x7ffe)
+			elif mnem in ['lpr', 'spr']:
+				if mnem == 'lpr':
+					op = 0b1000
+					reg = str_to_reg(params[0])
+					sr = params[1]
+				elif mnem == 'spr':
+					op = 0b1001
+					reg = str_to_reg(params[1])
+					sr = params[0]
+				
+				if   sr == 'cfg': v = 0x05
+				elif sr == 'intbaseh': v = 0x04
+				elif sr == 'intbasel': v = 0x03
+				elif sr == 'isp': v = 0x0b
+				elif sr == 'psr': v = 0x01
+				else: raise ValueError('Unknown internal value %s' % sr)
+				self.assemble_special(op=op, p1=v, p2=reg)
 			
 			# SBIT,CBIT, TBIT, STORi $imm4, X
+			elif mnem[:4] in ('sbit', 'cbit'):
+				i = str_to_format(mnem) # byte or word
+				src_imm = params[0]
+				dest_disp = params[1]
+				ex_op = 0b00
+				if mnem[:4] == 'sbit': ex_op = 0b01
+				elif mnem[:4] == 'cbit': ex_op = 0b00
+				
+				if type(dest_disp) is int:
+					# SBIT imm, abs
+					self.w32(
+						  ((dest_disp & 0b001111111111111111) << 16)\
+						| (0b00 << 14)\
+						| (i << 13)\
+						| (0b0010 << 9)\
+						| (((dest_disp & 0b100000000000000000) >> 17) << 8)\
+						| (ex_op << 6)\
+						| (((dest_disp & 0b010000000000000000) >> 16) << 5)\
+						| (src_imm << 1)\
+						| 0b0
+					)
+				else:
+					raise TypeError('Unsupported SBIT displacement: %s' % str(dest_disp))
+				
+			elif mnem == 'tbit':
+				if type(params[0]) is int:
+					# TBIT x, Ry
+					imm5 = params[0]
+					dest_reg = str_to_reg(params[1])
+					i = 1
+					op = 0b1011
+					#self.assemble_basic_imm_reg(op=0b11, i=1, imm=imm, dest_reg=reg)
+					self.w16(
+						  (0b00 << 14)\
+						| (i << 13)\
+						| (op << 9)\
+						| (dest_reg << 5)\
+						| imm5
+					)
+				else:
+					raise TypeError('Unsupported params for TBIT: %s, %s' % (params[0], params[1]))
+				
 			elif mnem in ('storb', 'loadb', 'storw', 'loadw'):
 				
 				#@TODO: Phew.... what a permutation mess!
@@ -777,7 +838,7 @@ class CR16B_Assembler:
 				
 				if type(params[0]) is int:
 					imm = params[0]
-					self.assemble_basic_imm_reg(op=op, i=i, imm=imm, dest_reg=dest_reg)
+					self.assemble_basic_imm_reg(op=op, i=i, imm=imm, dest_reg=dest_reg)	#, is_medium=(i==I_WORD))
 				else:
 					src_reg = str_to_reg(params[0])
 					self.assemble_basic_reg_reg(op=op, i=i, src_reg=src_reg, dest_reg=dest_reg)
@@ -816,6 +877,17 @@ class CR16B_Assembler:
 			elif mnem == 'jump':
 				self.assemble_jump(reg_pair=str_to_reg(params[0][1:-1].split(',')[1]))
 			
+			elif (mnem[:1] == 'j') and (mnem[1:] in CONDS):	# jcs, ...
+				#self.assemble_jump(reg_pair=str_to_reg(params[0][1:-1].split(',')[1]), cond=CONDS[mnem[1:]])
+				reg_pair = str_to_reg(params[0][1:-1].split(',')[1])
+				cond = CONDS[mnem[1:]]
+				self.w16(
+					  (0b00010110 << 8)\
+					| (cond << 5)\
+					| (reg_pair << 1)\
+					| 1
+				)
+			
 			elif mnem == 'jal':
 				self.assemble_jal(
 					lnk_pair=str_to_reg(params[0][1:-1].split(',')[1]),
@@ -823,7 +895,6 @@ class CR16B_Assembler:
 				)
 			
 			elif (mnem[:1] == 's') and (mnem[1:] in CONDS):	# seq, sne, ...
-				#imm = params[0]
 				reg = str_to_reg(params[0])
 				cond = CONDS[mnem[1:]]
 				self.assemble_special(op=0b111, p1=cond, p2=reg)
@@ -856,14 +927,14 @@ class CR16B_Assembler:
 		self.w16(instr16)
 	
 	
-	def assemble_basic_imm_reg(self, op, i, imm, dest_reg):
+	def assemble_basic_imm_reg(self, op, i, imm, dest_reg):	#, is_medium=False):
 		"""Basic instruction involving an immediate and a register. Automatically handles the size."""
 		
 		#@FIXME: Need to check unsigned/signed
 		
 		#@FIXME: According to the manual the only allowed values for imm5 are: -16, -14...15 (note: no -15 !)
 		#self.put_debug('imm=%d' % imm)
-		if (imm == -16) or (imm >= -14 and imm <= 15):
+		if (imm == -16) or (imm >= -14 and imm <= 15):	# and (not is_medium):
 			if imm < 0: imm = 0x20 + imm
 			self.assemble_basic_imm_reg_short(op, i, imm, dest_reg)
 		else:
@@ -1347,10 +1418,24 @@ def test_instructions():
 	# Test MOVx
 	# Test: 034434:	06 18      	1806     	movb    $0x06, r0
 	assert_assembly('movb    $0x06, r0', [0x06, 0x18])
+	
+	
+	# Edge cases with weird different sizes:
+	
+	# Test: 0001D8:	11 18 C0 FF	1811 FFC0	movb    $0xC0, r0
+	assert_assembly('movb    $0xC0, r0', [0x11, 0x18, 0xc0, 0xff])
+	# Test: 0001E8:	10 18      	1810     	movb    $0xF0, r0
+	assert_assembly('movb    $0xF0, r0', [0x10, 0x18])
+	# Test: 000202:	1F 18      	181F     	movb    $0xFF, r0
+	assert_assembly('movb    $0xFF, r0', [0x1f, 0x18])
+	
 	# Test: 034420:	0F 78      	780F     	movw    r7, r0
 	assert_assembly('movw    r7, r0', [0x0f, 0x78])
 	# Test: 000004:	11 38 00 01	3811 0100	movw    $0x0100, r0
 	assert_assembly('movw    $0x0100, r0', [0x11, 0x38, 0x00, 0x01])
+	# Test: 00013E:	91 39 00 00	3991 0000	movw    $0x0000, r12
+	assert_assembly('movw    $0x0000, r12', [0x91, 0x39, 0x00, 0x00])
+	
 	
 	# Test: 034442:	02 6A      	6A02     	movzb   r1, r0
 	assert_assembly('movzb   r1, r0', [0x02, 0x6a])
@@ -1546,6 +1631,34 @@ def test_instructions():
 	#asm.dump()
 	put('All tests OK')
 
+def test_reassemble():
+	"""Take a known disassembly and try to re-assemble it. Compare against previous binary"""
+	
+	filename = '/z/data/_code/_c/V-Tech/vcxdk.git/tools/cr16b_dasm/ROM_GL8008CX_27-6393-11.asm'
+	put('Loading and re-assembling file "%s"...' % filename)
+	with open(filename, 'r') as h:
+		data = h.read()
+	
+	lines = data.split('\n')
+	for l in lines:
+		l = l.strip()
+		if l == '': continue
+		if l[:1] == ';': continue
+		
+		# Split into OFS, BYTES, WORDS, ASM
+		parts = l.split('\t')
+		if len(parts) < 4: continue	# Must have at least 4 tab delimited columns (OFS, BYTES, WORD, ASM)
+		if parts[0][-1:] != ':': continue	# Must start with 000OFS:
+		#put(l)
+		
+		pc = int(parts[0][:-1], 16)
+		bin = [ int(hexb,16) for hexb in parts[1].strip().split(' ') ]
+		asm = parts[3]
+		try:
+			assert_assembly(asm, bin, pc=pc)
+		except AssertionError as e:
+			put('! DIFFERENCE: %s' % str(e))
+	
 
 def test_manual_assembly():
 	"""Assemble by manually calling each method"""
@@ -1818,7 +1931,8 @@ if __name__ == '__main__':
 		# Enable what to do, e.g. do assembler self-tests or actually try assembling and patching something
 		#test_manual_assembly()
 		#test_text_parser()
-		test_instructions()
+		#test_instructions()
+		test_reassemble()
 		
 		#run_patch()
 		
@@ -1872,6 +1986,8 @@ if __name__ == '__main__':
 	asm.assemble(pc=ofs, text=text)
 	
 	if args.stats:
+		# Dump stats
+		
 		put('Constants:')
 		for k,c in asm.constants.items():
 			put('\t* %s: 0x%06X / %d' % (k, c, c))
@@ -1880,17 +1996,23 @@ if __name__ == '__main__':
 		#for k,section in asm.sections.items():
 		#	put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
 		
+		def show_section_stats(section):
+			data = section.store.get_data()
+			l = len(data)
+			max_dump_size = 0x20
+			put('\t* %s at 0x%06X (0x%04X / %d bytes): %s%s' % (section.name, section.address, l,l, ' '.join(['%02X'%b for b in data[:max_dump_size]]), '...' if l > max_dump_size else '') )
+			for label_name, label_ofs in section.labels.items():
+				put('\t\t+ %s at 0x%04X' % (label_name, label_ofs))
+		
 		put('ROM Sections:')
 		for name in ROM_SECTIONS:
 			if not name in asm.sections: continue
-			section = asm.sections[name]
-			put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
+			show_section_stats(asm.sections[name])
 		
 		put('RAM Sections:')
 		for name in RAM_SECTIONS:
 			if not name in asm.sections: continue
-			section = asm.sections[name]
-			put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
+			show_section_stats(asm.sections[name])
 		
 		unknown_found = False
 		for name,section in asm.sections.items():
@@ -1899,7 +2021,7 @@ if __name__ == '__main__':
 				# Print header only on demand
 				put('Unknown Sections:')
 				unknown_found = True
-			put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
+			show_section_stats(section)
 		
 	
 	if output_filename is None:

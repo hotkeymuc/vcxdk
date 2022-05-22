@@ -1153,7 +1153,8 @@ int eval(int argc, char *argv[]) {
 	//putchar('"');
 	printf(argv[0]);
 	//printf("\"?\n");
-	printf("?\n");
+	putchar('?');
+	putchar('\n');
 	return ERR_COMMAND_UNKNOWN;
 }
 

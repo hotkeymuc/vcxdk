@@ -822,6 +822,12 @@ class CR16B_Assembler:
 					target_pair=str_to_reg(params[1][1:-1].split(',')[1])
 				)
 			
+			elif (mnem[:1] == 's') and (mnem[1:] in CONDS):	# seq, sne, ...
+				#imm = params[0]
+				reg = str_to_reg(params[0])
+				cond = CONDS[mnem[1:]]
+				self.assemble_special(op=0b111, p1=cond, p2=reg)
+				
 			else:
 				raise KeyError('Mnemonic "%s" not part of the *very* limited set of supported OpCodes!' % mnem)
 			
@@ -1529,6 +1535,13 @@ def test_instructions():
 	assert_assembly('bhi     0x00150A', [0x80, 0x42], pc=0x0014EA)
 	# Test: 0014F0:	3A 41      	413A     	bfc     0x00150A
 	assert_assembly('bfc     0x00150A', [0x3a, 0x41], pc=0x0014F0)
+	
+	# Test: 00294E:	30 6E      	6E30     	sne     r8
+	assert_assembly('sne     r8', [0x30, 0x6e])
+	# Test: 024E72:	00 6E      	6E00     	seq     r0
+	assert_assembly('seq     r0', [0x00, 0x6e])
+	# Test: 0027B6:	04 6E      	6E04     	seq     r2
+	assert_assembly('seq     r2', [0x04, 0x6e])
 	
 	#asm.dump()
 	put('All tests OK')

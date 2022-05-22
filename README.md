@@ -26,6 +26,8 @@ Fortunately, there are two starting points:
 
 
 ## History
+* 2022-05-15: Experimental compiler using LLVM IR text translation. Very hacky.
+* 2022-05-10: Rudimentary STDLIB functions.
 * 2022-05-08: Got LCD frame-buffer access with a custom font.
 * 2022-05-05: Successfully assembled a very basic C file, which then ran on the real hardware!
 * 2022-05-01: We got code execution on a custom compiled ROM using the simple cr16b_asm assembler!

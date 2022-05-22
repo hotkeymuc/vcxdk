@@ -233,10 +233,8 @@ void screen_printf(__far char *s) {
 	while(1) {
 		c = *s++;
 		if (c == 0) break;
-		
 		screen_putchar(c);
 	}
-	
 }
 
 

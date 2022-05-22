@@ -14,7 +14,7 @@ int strlen(const char *c) {
 }
 
 
-byte strcmp(const char *cs, const char *ct) {
+byte strcmp(__far const char *cs, __far const char *ct) {
 	while ((*cs != 0) && (*ct != 0)) {
 		if (*cs++ != *ct++) return 1;
 	}
@@ -28,7 +28,7 @@ byte stricmp1(char a, char b) {
 	if (a != b) return 1;
 	return 0;
 }
-byte stricmp(const char *cs, const char *ct) {
+byte stricmp(__far const char *cs, __far const char *ct) {
 	while ((*cs != 0) && (*ct != 0)) {
 		if (stricmp1(*cs++, *ct++)) return 1;
 	}

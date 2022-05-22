@@ -363,10 +363,21 @@ class CR16B_Assembler:
 		"""Relocate the sections according to order given as parameter (name list)"""
 		
 		relocated = False
-		old_section = asm.sections[section_names[0]]
-		for name in section_names[1:]:	# Only given sections
+		
+		# Search first available section
+		#old_section = asm.sections[section_names[0]]
+		old_section = None
+		for name in section_names:
+			if name in asm.sections:
+				old_section = asm.sections[name]
+				break
+		if old_section is None:
+			raise Exception('Could not find a starting section!')
+		
+		for name in section_names:	# Only given sections
 			if not name in asm.sections: continue
 			section = asm.sections[name]
+			if section == old_section: continue
 			
 			# Pad previous section to alignment
 			if (old_section.get_ofs() % self.align > 0):
@@ -1013,18 +1024,8 @@ class CR16B_Assembler:
 		
 		#@TODO: STOR with absolute 18-bit address and 4-bit immediate
 		#self.assemble_stor_abs(ad18=params[1], imm4=params[0])
-		if (src_reg is not None) and (dest_reg is None):
-			# Reg to Absolute
-			self.w32(
-				  ((dest_disp & 0b001111111111111111) << 16)\
-				| (0b11 << 14)\
-				| (i << 13)\
-				| (0b11 << 11)\
-				| (((dest_disp & 0b110000000000000000) >> 16) << 9)\
-				| (src_reg << 5)\
-				| 0b11111
-			)
-		elif (src_reg is None) and (dest_reg is None):
+		
+		if (src_reg is None) and (dest_reg is None):
 			# Imm4 to 18-bit absolute
 			
 			if src_imm < 16:
@@ -1041,7 +1042,53 @@ class CR16B_Assembler:
 				)
 			else:
 				raise ValueError('Immediate too big (4 bits only) for big absolute addressing')
-				
+			
+		elif (src_reg is None) and (dest_reg is not None) and (dest_disp is not None):
+			
+			# see B.2.5
+			if   dest_reg == REG_R0: bs = 0b00
+			elif dest_reg == REG_R1: bs = 0b01
+			elif dest_reg == REG_R8: bs = 0b10
+			elif dest_reg == REG_R9: bs = 0b11
+			else:
+				raise TypeError('Unsupported register for register-relative STOR')
+			
+			if (dest_disp == 0) and (src_imm < 16):
+				self.w16(
+					  (0b01 << 14)\
+					| (i << 13)\
+					| (0b0010 << 9)\
+					| ((bs & 0b10) << 8)\
+					| (0b11 << 6)\
+					| ((bs & 0b01) << 5)\
+					| (src_imm << 1)\
+					| 1
+				)
+			else:
+				# B2.5 Register-relative with 16-bit displacement
+				self.w32(
+					  (dest_disp << 16)\
+					| (0b00 << 14)\
+					| (i << 13)\
+					| (0b0010 << 9)\
+					| ((bs & 0b10) << 8)\
+					| (0b11 << 6)\
+					| ((bs & 0b01) << 5)\
+					| (src_imm << 1)\
+					| 1
+				)
+		
+		elif (src_reg is not None) and (dest_reg is None):
+			# Reg to Absolute
+			self.w32(
+				  ((dest_disp & 0b001111111111111111) << 16)\
+				| (0b11 << 14)\
+				| (i << 13)\
+				| (0b11 << 11)\
+				| (((dest_disp & 0b110000000000000000) >> 16) << 9)\
+				| (src_reg << 5)\
+				| 0b11111
+			)
 		elif (src_reg is not None) and (dest_reg is not None) and (dest_disp is not None):
 			# Reg to Reg-relative
 			if (abs(dest_disp) < 32) and (not dest_reg_is_far):
@@ -1069,7 +1116,7 @@ class CR16B_Assembler:
 			else:
 				raise ValueError('Large register-relative STOR displacements are not yet supported, sorry!')
 		else:
-			raise TypeError('Parameter combination not yet supported')
+			raise TypeError('Parameter combination for STOR not yet supported: src_reg=%s, src_imm=%s, dest_reg=%s, dest_disp=%s, dest_reg_is_far=%s' % (src_reg, src_imm, dest_reg, dest_disp, dest_reg_is_far))
 		
 	
 	def assemble_br(self, disp, cond=0x0e):
@@ -1249,6 +1296,13 @@ def test_instructions():
 	assert_assembly('storw   r7, 0x10(r3,r2)', [0xe5, 0xf8, 0x10, 0x00])
 	# Test: 001008:	A5 F9 04 00	F9A5 0004	storw   era, 0x4(r3,r2)
 	assert_assembly('storw   era, 0x4(r3,r2)', [0xa5, 0xf9, 0x04, 0x00])
+	
+	# Test: 03D3AC:	C1 24 02 00	24C1 0002	storw   $0, 0x2(r0)
+	assert_assembly('storw   $0, 0x2(r0)', [0xc1, 0x24, 0x02, 0x00])
+	# Test: 03CE4C:	C1 64      	64C1     	storw   $0, 0(r0)
+	assert_assembly('storw   $0, 0(r0)', [0xc1, 0x64])
+	# Test: 03CE3E:	03 D0 43 7B	D003 7B43	storb   r0, 0x7B43(r1)
+	assert_assembly('storb   r0, 0x7B43(r1)', [0x03, 0xd0, 0x43, 0x7b])
 	
 	# Test: 003154:	1F B0 22 00	B01F 0022	loadw   0x22(sp), r0
 	assert_assembly('loadw   0x22(sp), r0', [0x1f, 0xb0, 0x22, 0x00])

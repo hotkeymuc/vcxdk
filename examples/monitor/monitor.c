@@ -48,7 +48,7 @@ char cmd_arg[MAX_INPUT];
 #define MONITOR_CMD_CLS
 //#define MONITOR_CMD_DUMP
 //#define MONITOR_CMD_ECHO
-//#define MONITOR_CMD_EXIT
+#define MONITOR_CMD_EXIT
 #define MONITOR_CMD_HELP	// Even without MONITOR_HELP_LONG, the HELP command can list all commands
 //#define MONITOR_CMD_INTERRUPTS
 //#define MONITOR_CMD_LOOP
@@ -296,6 +296,15 @@ word lastAddr;	// temp address
 void parse(char *arg);	// Forward declaration to input parser, needed for batch functionality
 int eval(int argc, char *argv[]);	// Forward declaration to input parser, needed for batch functions
 
+
+
+byte monitor_stricmp(char *cs, __far const char *ct) {
+	while ((*cs != 0) && (*ct != 0)) {
+		if (stricmp1(*cs++, *ct++)) return 1;
+	}
+	if (stricmp1(*cs, *ct)) return 1;
+	return 0;
+}
 
 
 #ifdef MONITOR_CMD_CLS
@@ -553,7 +562,8 @@ int cmd_ver(int argc, char *argv[]) {
 	(void) argc; (void) argv;
 	
 	//printf("%s\n", VERSION);
-	printf((__far const char *)VERSION);
+	//printf((__far const char *)VERSION);
+	printf((__far char *)CARTRIDGE_ROM_POINTER((__far void *)VERSION));
 	
 	// Print the VGLDK_SERIES value
 	#ifdef VGLDK_SERIES
@@ -1049,7 +1059,7 @@ int cmd_help(int argc, char *argv[]) {
 		for(i = 0; i < (sizeof(COMMANDS) / sizeof(t_commandEntry)); i++) {
 			if (i > 0) putchar(' ');	//printf(" ");
 			//printf("%s", COMMANDS[i].name);
-			printf((__far const char *)COMMANDS[i].name);
+			printf((__far char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0]));
 			
 			#ifdef MONITOR_HELP_LONG
 			//printf(": ");
@@ -1064,11 +1074,12 @@ int cmd_help(int argc, char *argv[]) {
 	#ifdef MONITOR_HELP_LONG
 		// Specific help
 		for(i = 0; i < (sizeof(COMMANDS) / sizeof(t_commandEntry)); i++) {
-			if (stricmp(argv[1], COMMANDS[i].name) == 0) {
+			if (monitor_stricmp(argv[1], CARTRIDGE_ROM_POINTER(COMMANDS[i].name)) == 0) {
 				//printf("%s: %s\n", COMMANDS[i].name, COMMANDS[i].help);
-				printf(COMMANDS[i].name);
-				printf(": ");
-				printf(COMMANDS[i].help);
+				printf((__far char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0]));
+				putchar(':');
+				putchar(' ');
+				printf((__far char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].help[0]));
 				putchar('\n');
 				return ERR_OK;
 			}
@@ -1128,7 +1139,8 @@ int eval(int argc, char *argv[]) {
 	
 	// Check internal commands
 	for(i = 0; i < (sizeof(COMMANDS) / sizeof(t_commandEntry)); i++) {
-		if (stricmp(argv[0], COMMANDS[i].name) == 0) {
+		//if (monitor_stricmp(argv[0], (__far char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
+		if (monitor_stricmp(argv[0], (__far const char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
 			return COMMANDS[i].call(argc, argv);
 		}
 	}
@@ -1350,6 +1362,7 @@ void main(void) {
 	
 	// Command line loop
 	running = true;
+	
 	while(running) {
 		
 		// Prompt for input
@@ -1366,7 +1379,4 @@ void main(void) {
 	//printf("Bye!");
 	
 	// Off into the abyss...
-	
-	
-	
 }

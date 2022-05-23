@@ -156,7 +156,7 @@ void screen_draw_glyph(word x, word y, word g) {
 }
 
 
-
+/*
 void screen_draw_hexdigit(word x, word y, word v) {	// byte v	// ... but we are always passing 16-bit anyway!
 	if (v <= 0x09)
 		screen_draw_glyph(x  , y, (word)('0'+v));
@@ -179,7 +179,7 @@ void screen_draw_hex16(word x, word y, word v) {
 	screen_draw_hexdigit(x, y, (v >>  4) & 0xf); x += FONT_WIDTH;
 	screen_draw_hexdigit(x, y, (v      ) & 0xf);
 }
-
+*/
 
 /*
 void draw_pchar(word x, word y, __far char *p) {

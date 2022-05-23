@@ -7,64 +7,6 @@ Was used to find the keyboard buffer and touchpad state.
 2022-05-10 Bernhard "HotKey" Slawik
 */
 
-//#include <vcxdk.h>
-//#include <memory.h>
-//#include <screen.h>
-//#include <keyboard.h>
-//#include <ui.h>
-
-#include <stdiomin.h>
-#include <stdlibmin.h>	// for atoi()
-#include <stringmin.h>	// for strcmp()
-
-//#define mem(x) *(unsigned char *)(x)
-//#define bin(a,b,c,d,e,f,g,h) (a*128 + b*64 + c*32 + d*16 + e*8 + f*4 + g*2 + h)
-
-__far const char VERSION[] = "Monitor 0.0";
-
-// Setup
-#define MAX_ARGS 8
-#define MAX_INPUT 255	//128	//64
-char cmd_arg[MAX_INPUT];
-
-
-
-// Features to include (affects how big the binary gets)
-//#define MONITOR_HELP_LONG	// Include "long" help functionality (needs quite some space for the strings...)
-
-
-//#define MONITOR_SERIAL	// Include serial functions
-//#define MONITOR_SERIAL_USE_SOFTUART	// Use new C-based softuart (currently only GL4000)
-//#define MONITOR_SERIAL_USE_SOFTSERIAL	// Use ASM-based softserial (custom for each architecture)
-//#define MONITOR_SERIAL_AUTOSTART	// Make softserial take over STDIO at startup
-//#define SOFTUART_BAUD 9600
-
-//#define MONITOR_FILES	// Include file system stuff
-//#define MONITOR_FILES_FS_NULL	// Include FS driver for NULL filesystem
-//#define MONITOR_FILES_FS_INTERNAL	// Include FS driver for "internal" ROM data
-//#define MONITOR_FILES_FS_PARABUDDY	// Include FS driver for externally mounted FS
-
-
-#define MONITOR_CMD_CLS
-//#define MONITOR_CMD_DUMP
-//#define MONITOR_CMD_ECHO
-#define MONITOR_CMD_EXIT
-#define MONITOR_CMD_HELP	// Even without MONITOR_HELP_LONG, the HELP command can list all commands
-//#define MONITOR_CMD_INTERRUPTS
-//#define MONITOR_CMD_LOOP
-//#define MONITOR_CMD_PEEKPOKE	// Required for uploading via serial
-//#define MONITOR_CMD_CALL
-//#define MONITOR_CMD_PAUSE
-#define MONITOR_CMD_VER	// ~54 bytes
-//#define MONITOR_CMD_LOAD	// Requires MONITOR_FILES
-//#define MONITOR_CMD_RUN	// Requires MONITOR_CMD_LOAD and MONITOR_CMD_CALL
-
-
-// Definitions
-#define ERR_OK 0
-#define ERR_COMMAND_UNKNOWN -2
-#define ERR_MISSING_ARGUMENT -6
-#define ERR_NOT_IMPLEMENTED -15
 
 
 
@@ -263,6 +205,97 @@ char cmd_arg[MAX_INPUT];
 
 
 
+//#include <vcxdk.h>
+//#include <memory.h>
+//#include <screen.h>
+//#include <keyboard.h>
+//#include <ui.h>
+
+#include <stdiomin.h>
+#include <stdlibmin.h>	// for atoi()
+#include <stringmin.h>	// for strcmp()
+
+
+//#define mem(x) *(unsigned char *)(x)
+//#define bin(a,b,c,d,e,f,g,h) (a*128 + b*64 + c*32 + d*16 + e*8 + f*4 + g*2 + h)
+
+__far const char VERSION[] = "Monitor 1.5";
+const word defaultAddr = 0xf800;	// Default address to load stuff to (e.g. apps)
+
+
+// Setup
+#define MAX_ARGS 8
+#define MAX_INPUT 255	//128	//64
+char cmd_arg[MAX_INPUT];
+
+
+
+// Features to include (affects how big the binary gets)
+#define MONITOR_HELP_LONG	// Include "long" help functionality (needs quite some space for the strings...)
+
+
+//#define MONITOR_SERIAL	// Include serial functions
+//#define MONITOR_SERIAL_USE_SOFTUART	// Use new C-based softuart (currently only GL4000)
+//#define MONITOR_SERIAL_USE_SOFTSERIAL	// Use ASM-based softserial (custom for each architecture)
+//#define MONITOR_SERIAL_AUTOSTART	// Make softserial take over STDIO at startup
+//#define SOFTUART_BAUD 9600
+
+//#define MONITOR_FILES	// Include file system stuff
+//#define MONITOR_FILES_FS_NULL	// Include FS driver for NULL filesystem
+//#define MONITOR_FILES_FS_INTERNAL	// Include FS driver for "internal" ROM data
+//#define MONITOR_FILES_FS_PARABUDDY	// Include FS driver for externally mounted FS
+
+
+#define MONITOR_CMD_CLS
+//#define MONITOR_CMD_DUMP
+//#define MONITOR_CMD_ECHO
+#define MONITOR_CMD_EXIT
+#define MONITOR_CMD_HELP	// Even without MONITOR_HELP_LONG, the HELP command can list all commands
+//#define MONITOR_CMD_INTERRUPTS
+//#define MONITOR_CMD_LOOP
+#define MONITOR_CMD_PEEKPOKE	// Required for uploading via serial
+//#define MONITOR_CMD_CALL
+//#define MONITOR_CMD_PAUSE
+#define MONITOR_CMD_VER	// ~54 bytes
+//#define MONITOR_CMD_LOAD	// Requires MONITOR_FILES
+//#define MONITOR_CMD_RUN	// Requires MONITOR_CMD_LOAD and MONITOR_CMD_CALL
+
+
+// Definitions
+#define ERR_OK 0
+#define ERR_COMMAND_UNKNOWN -2
+#define ERR_MISSING_ARGUMENT -6
+#define ERR_NOT_IMPLEMENTED -15
+
+
+#include <hex.h>	// for printf_x2(), hextow()...
+
+void printf_bin(byte v) {
+	byte p;
+	
+	for(p = 0; p < 8; p++) {
+		if ((v & (1 << (7-p))) > 0) putchar('1'); else putchar('0');
+	}
+}
+
+void printf_byte_pretty(byte v) {
+	
+	// Hex
+	//printf("0x");
+	putchar('0');putchar('x'); printf_x2(v);
+	
+	// Binary
+	putchar(' '); printf_bin(v);
+	
+	/*
+	// Decimal
+	//printf(" %d\n", v);
+	putchar(' '); printf_d(v);
+	*/
+}
+
+
+
 // Internal command call definition
 typedef int (*t_commandCall)(int argc, char *argv[]);
 
@@ -273,7 +306,7 @@ typedef struct {
 	t_commandCall call;
 	
 	#ifdef MONITOR_HELP_LONG
-	const char *help;
+	__far const char *help;
 	#endif
 	
 } t_commandEntry;
@@ -381,9 +414,7 @@ int cmd_di(int argc, char *argv[]) {
 	(void)argc;
 	(void)argv;
 	
-	__asm
-		di
-	__endasm;
+	__asm__("di");
 	
 	return ERR_OK;
 }
@@ -391,9 +422,7 @@ int cmd_ei(int argc, char *argv[]) {
 	(void)argc;
 	(void)argv;
 	
-	__asm
-		ei
-	__endasm;
+	__asm__("ei");
 	
 	return ERR_OK;
 }
@@ -478,11 +507,11 @@ int cmd_poke(int argc, char *argv[]) {
 	a = hextow(argv[1]);
 	
 	// Allow poking multiple values
-	b = argv[2];
+	b = (byte *)argv[2];
 	do {
 		v = hextob(b);
-		*((byte *)a) = v;
-		b+=2;
+		*(byte *)a = v;
+		b += 2;
 		a++;
 	} while (*b != 0);
 	
@@ -563,7 +592,8 @@ int cmd_ver(int argc, char *argv[]) {
 	
 	//printf("%s\n", VERSION);
 	//printf((__far const char *)VERSION);
-	printf((__far char *)CARTRIDGE_ROM_POINTER((__far void *)VERSION));
+	//printf((__far char *)CARTRIDGE_ROM_POINTER((__far void *)&VERSION[0]));
+	puts(CARTRIDGE_ROM_POINTER(VERSION));
 	
 	// Print the VGLDK_SERIES value
 	#ifdef VGLDK_SERIES
@@ -571,8 +601,8 @@ int cmd_ver(int argc, char *argv[]) {
 		#define xstr(s) str(s)
 		#define str(s) #s
 		printf(" / " xstr(VGLDK_SERIES) );
+		putchar('\n');
 	#endif
-	putchar('\n');
 	
 	return ERR_OK;
 }
@@ -1279,8 +1309,8 @@ void parse(char *s) {
 	if (r != 0) {
 		//printf("Exit code %d\n", r);
 		//printf("Exit code "); printf_d(r); printf("\n");
-		printf("Exit ");
-		printf("0x"); printf_x4((word)r);
+		printf(CARTRIDGE_ROM_POINTER("Exit "));
+		printf(CARTRIDGE_ROM_POINTER("0x")); printf_x4((word)r);
 		putchar('\n');
 	}
 }
@@ -1306,7 +1336,11 @@ void main(void) {
 	}
 	*/
 	
+	// Alive?
+	screen_draw_glyph(0,0, (word)'*');
+	
 	clear();
+	
 	
 	#ifdef MONITOR_FILES
 	// Mount file systems

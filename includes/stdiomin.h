@@ -21,26 +21,34 @@ void puts(__far char* s) {
 	printf(s);
 	
 	// Trailing new line as per spec
-	screen_putchar('\n');
 	putchar('\n');
 }
 
 //void printf(__far const char *format, ...) { }
 
-char *gets(char *s) {
+__far char *gets(__far char *s) {
 	int c;
 	//char *ps;
 	byte l;
+	word timeout;
 	
 	//ps = s;
 	l = 0;
 	c = 0;
+	
 	while(c != 10) {
 		
 		// if echo
 		screen_draw_glyph(screen_x, screen_y, '_');
 		
-		c = getchar();
+		// Semi-block
+		c = 0xff;
+		timeout = 0x4000;
+		while (key_available() == 0) {
+			timeout--;
+		}
+		if (key_available() > 0)
+			c = getchar();
 		
 		// if echo
 		screen_draw_glyph(screen_x, screen_y, ' ');
@@ -70,24 +78,6 @@ char *gets(char *s) {
 	return s;
 }
 
-void printf_x(word v) {	// byte v	// ... but we are always passing 16-bit anyway!
-	if (v <= 0x09)
-		putchar((int)('0'+v));
-	else if (v <= 0x0f)
-		putchar((int)('A'+v-0x0a));
-	else
-		putchar((int)'?');
-}
-void printf_x2(word v) {	// byte v	// ... but we are always passing 16-bit anyway!
-	printf_x(v >> 4);
-	printf_x(v & 0x0f);
-}
-void printf_x4(word v) {
-	printf_x(v >> 12);
-	printf_x((v >> 8) & 0x0f);
-	printf_x((v >> 4) & 0x0f);
-	printf_x(v & 0x0f);
-}
 
 /*
 //void memcpy(void* dst_addr, const void* src_addr, size_t count) {

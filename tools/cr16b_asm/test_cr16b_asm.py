@@ -20,12 +20,12 @@ def assert_assembly(text, bin, pc=0x0000):
 	"""Helper function to check assembly text against asserted binary output"""
 	
 	
-	#put_debug('Checking "%06X	%s" =?= %s' % (pc, text, ' '.join([ '%02X' % b for b in bin]) ))
+	put_debug('Checking "%06X	%s" =?= %s' % (pc, text, ' '.join([ '%02X' % b for b in bin]) ))
 	
 	
 	asm = CR16B_Assembler()
 	#bin2 = asm.assemble(text, pc=pc)
-	asm._assemble(text, pc=pc)	# Only single pass needed
+	asm._assemble(text, pc=pc, echo_lines=False)	# Only single pass needed
 	
 	# Compare the text section
 	bin2 = asm.sections['text'].store.get_bytes()
@@ -349,7 +349,7 @@ def test_instructions():
 	# Test: 0014D6:	26 40      	4026     	bne     0x0014DC
 	assert_assembly('bne     0x0014DC', [0x26, 0x40], pc=0x0014D6)
 	
-	#@FIXME: Wrong output!
+	#@FIXME: Weird output! 0x5E instead of 0x4x
 	# Test: 0014E4:	F8 5E      	5EF8     	ble     0x0014EC
 	assert_assembly('ble     0x0014EC', [0xf8, 0x5e], pc=0x0014E4)
 	
@@ -400,10 +400,10 @@ def test_reassemble():
 		pc = int(parts[0][:-1], 16)
 		bin = [ int(hexb,16) for hexb in parts[1].strip().split(' ') ]
 		asm = parts[3]
-		try:
-			assert_assembly(asm, bin, pc=pc)
-		except AssertionError as e:
-			put('! DIFFERENCE: %s' % str(e))
+		#try:
+		assert_assembly(asm, bin, pc=pc)
+		#except AssertionError as e:
+		#	put('! DIFFERENCE: %s' % str(e))
 	
 
 def test_manual_assembly():

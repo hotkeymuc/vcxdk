@@ -103,7 +103,8 @@ export CRDIR=${CR16TOOLSET_PATH//\//\\}
 
 # Call the compiler using Wine
 #wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -Wextra -I${INCLUDES_PATH} -c -S -n ${INPUT_FILENAME}
-wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -O -I${INCLUDES_PATH} -c -S -n ${INPUT_FILENAME}
+#wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -O -DCRCC_OPT -I${INCLUDES_PATH} -c -S -n ${INPUT_FILENAME}
+wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -I${INCLUDES_PATH} -c -S -n ${INPUT_FILENAME}
 
 # Check result, stop if something went wrong
 CRCC_RESULT=$?

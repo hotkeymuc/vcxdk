@@ -214,7 +214,7 @@ const char KEY_MAP[2][6][16] = {
 }
 ;
 
-//char scancode_to_char(unsigned char scancode, unsigned char modifiers) {
+//char scancode_to_char(byte scancode, byte modifiers) {
 int scancode_to_char(word scancode, word modifiers) {
 	// Convert given scancode (and mofidiers) to ASCII character
 	
@@ -246,16 +246,16 @@ int scancode_to_char(word scancode, word modifiers) {
 	return c;
 }
 
-unsigned char get_current_scancode(void) {
+byte get_current_scancode(void) {
 	// Return the currently depressed scancode
 	
-	return *(unsigned char *)(KEYBOARD_CURRENT_SCANCODE);
+	return *(byte *)(KEYBOARD_CURRENT_SCANCODE);
 }
 
-unsigned char key_available(void) {
+byte key_available(void) {
 	// Return 1 if a key is in buffer, else 0
 	
-	if (*(unsigned char *)KEYBOARD_BUFFER_OUT != *(unsigned char *)KEYBOARD_BUFFER_IN) {
+	if (*(byte *)KEYBOARD_BUFFER_OUT != *(byte *)KEYBOARD_BUFFER_IN) {
 		return 1;
 	}
 	return 0;
@@ -264,30 +264,30 @@ unsigned char key_available(void) {
 int getchar(void) {
 	// Block until key is pressed, then consume that scancode and return it as ASCII character
 	
-	unsigned char scancode;
-	unsigned char modifiers;
-	unsigned char index;
+	byte scancode;
+	byte modifiers;
+	byte index;
 	
 	// Wait for buffer to hold something
-	// while (*(unsigned char *)(KEYBOARD_BUFFER_IN) == *(unsigned char *)(KEYBOARD_BUFFER_OUT)) { }
-	index = *(unsigned char *)(KEYBOARD_BUFFER_OUT);
-	while (*(unsigned char *)KEYBOARD_BUFFER_IN == index) {
+	// while (*(byte *)(KEYBOARD_BUFFER_IN) == *(byte *)(KEYBOARD_BUFFER_OUT)) { }
+	index = *(byte *)(KEYBOARD_BUFFER_OUT);
+	while (*(byte *)KEYBOARD_BUFFER_IN == index) {
 		// Wait for BUFFER_IN to increment
 	}
 	
 	// Increment BUFFER_OUT
 	//@FIXME: Modulo gets compiled to "_fast_rem" which I don't have, yet.
-	//*(unsigned char *)(KEYBOARD_BUFFER_OUT) = (*(unsigned char *)(KEYBOARD_BUFFER_OUT) + 1) % KEYBOARD_BUFFER_SIZE;
+	//*(byte *)(KEYBOARD_BUFFER_OUT) = (*(byte *)(KEYBOARD_BUFFER_OUT) + 1) % KEYBOARD_BUFFER_SIZE;
 	index ++;
 	if (index >= KEYBOARD_BUFFER_SIZE)
 		index -= KEYBOARD_BUFFER_SIZE;
 	
 	// Fetch scancode
-	scancode = *(unsigned char *)(KEYBOARD_BUFFER + (index * 2));
-	modifiers = *(unsigned char *)(KEYBOARD_BUFFER + (index * 2) + 1);
+	scancode = *(byte *)(KEYBOARD_BUFFER + (index * 2));
+	modifiers = *(byte *)(KEYBOARD_BUFFER + (index * 2) + 1);
 	
 	// Write incremented BUFFER_OUT
-	*(unsigned char *)(KEYBOARD_BUFFER_OUT) = index;
+	*(byte *)(KEYBOARD_BUFFER_OUT) = index;
 	
 	// Convert to char
 	return scancode_to_char(scancode, modifiers);

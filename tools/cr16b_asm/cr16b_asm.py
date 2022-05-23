@@ -487,7 +487,9 @@ class CR16B_Assembler:
 			# Skip empty lines
 			if line == '': continue
 			
+			
 			self.put_debug('Parsing:	%06X	%s' % (pc, line))
+			
 			
 			# Skip full-line comments
 			if line[:1] == '#': continue
@@ -707,6 +709,9 @@ class CR16B_Assembler:
 				self.w16(0x7dde)
 			elif mnem == 'ei':
 				self.w16(0x7dfe)
+			elif mnem == 'res':
+				#self.w16(0x1514)
+				self.w16(0x1520)
 			elif mnem == 'wait':
 				self.w16(0x7ffe)
 			elif mnem in ['lpr', 'spr']:
@@ -753,10 +758,11 @@ class CR16B_Assembler:
 					raise TypeError('Unsupported SBIT displacement: %s' % str(dest_disp))
 				
 			elif mnem == 'tbit':
+				dest_reg = str_to_reg(params[1])
+				
 				if type(params[0]) is int:
 					# TBIT x, Ry
 					imm5 = params[0]
-					dest_reg = str_to_reg(params[1])
 					i = 1
 					op = 0b1011
 					#self.assemble_basic_imm_reg(op=0b11, i=1, imm=imm, dest_reg=reg)
@@ -768,7 +774,9 @@ class CR16B_Assembler:
 						| imm5
 					)
 				else:
-					raise TypeError('Unsupported params for TBIT: %s, %s' % (params[0], params[1]))
+					src_reg = str_to_reg(params[0])
+					self.assemble_basic_reg_reg(op=0b1011, i=1, src_reg=src_reg, dest_reg=dest_reg)
+					#raise TypeError('Unsupported params for TBIT: %s, %s' % (params[0], params[1]))
 				
 			elif mnem in ('storb', 'loadb', 'storw', 'loadw'):
 				
@@ -834,6 +842,9 @@ class CR16B_Assembler:
 				
 				op = OP_BASICS[mnem[:-1]]
 				i = str_to_format(mnem)	# WORD/BYTE
+				
+				#@FIXME: params[1] can also be a pair! e.g. "mulsw r2, (r9,r8)"
+				if ',' in params[1]: raise TypeError('Regpair not yet supported for "%s" with param %s' % (mnem, params[1]))
 				dest_reg = str_to_reg(params[1])
 				
 				if type(params[0]) is int:
@@ -855,12 +866,12 @@ class CR16B_Assembler:
 				self.assemble_bal(disp21=params[1] - pc, lnk_pair=str_to_reg(params[0][1:-1].split(',')[1]))
 			
 			
-			#elif mnem == 'beq0b':	self.assemble_brcond(cond=COND_EQ, val1=0, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
-			#elif mnem == 'beq1b':	self.assemble_brcond(cond=COND_EQ, val1=1, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
-			#elif mnem == 'bne0b':	self.assemble_brcond(cond=COND_NE, val1=0, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
-			#elif mnem == 'bne1b':	self.assemble_brcond(cond=COND_NE, val1=1, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
+			#elif mnem == 'beq0b':	self.assemble_brcondi(cond=COND_EQ, val1=0, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
+			#elif mnem == 'beq1b':	self.assemble_brcondi(cond=COND_EQ, val1=1, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
+			#elif mnem == 'bne0b':	self.assemble_brcondi(cond=COND_NE, val1=0, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
+			#elif mnem == 'bne1b':	self.assemble_brcondi(cond=COND_NE, val1=1, i=I_BYTE, reg=str_to_reg(params[0]), disp5m1=params[1] - pc)
 			elif (len(mnem) == 5) and (mnem[:3] in ('beq', 'bne')):	# Special compare-and-branch (beq0/1b/2)
-				self.assemble_brcond(
+				self.assemble_brcondi(
 					cond=COND_NE if mnem[1:3] == 'ne' else COND_EQ,	# condition: eq or ne
 					val1=int(mnem[3:4]),	# val: 0 or 1
 					i=I_WORD if mnem[-1:] == 'w' else I_BYTE,	# format: b or w
@@ -931,13 +942,18 @@ class CR16B_Assembler:
 		"""Basic instruction involving an immediate and a register. Automatically handles the size."""
 		
 		#@FIXME: Need to check unsigned/signed
+		if (i == I_BYTE) and (imm >= 0x80):
+			imm = imm - 0x100
+		if (i == I_WORD) and (imm >= 0x8000):
+			imm = imm - 0x10000
 		
+		#if (i==I_BYTE) and ((imm == -16) or (imm >= -14 and imm <= 15)):	# and (not is_medium):
 		#@FIXME: According to the manual the only allowed values for imm5 are: -16, -14...15 (note: no -15 !)
-		#self.put_debug('imm=%d' % imm)
-		if (imm == -16) or (imm >= -14 and imm <= 15):	# and (not is_medium):
+		if (imm == -16) or (imm >= -14 and imm <= 15):
 			if imm < 0: imm = 0x20 + imm
 			self.assemble_basic_imm_reg_short(op, i, imm, dest_reg)
 		else:
+			
 			self.assemble_basic_imm_reg_medium(op, i, imm, dest_reg)
 	
 	def assemble_basic_imm_reg_short(self, op, i, imm5, dest_reg):
@@ -961,22 +977,6 @@ class CR16B_Assembler:
 			| (op << 9)\
 			| (dest_reg << 5)\
 			| 0b10001
-		)
-	
-	
-	def assemble_brcond(self, cond, val1, i, reg, disp5m1):
-		"""Assemble Compare-and-Branch (BEQ0/1i, BNE0/1i)"""
-		
-		
-		self.w16(
-			  (i << 13)\
-			| (0xa << 9)\
-			| (((reg & 0b1000) >> 3) << 8)\
-			| (cond << 7)\
-			| (val1 << 6)\
-			| ((reg & 0b0001) << 5)\
-			| (((disp5m1 & 0b11110) >> 1) << 1)\
-			| 1
 		)
 	
 	def assemble_movd(self, imm21, dest_pair):
@@ -1204,11 +1204,17 @@ class CR16B_Assembler:
 				0xe=no condition
 		"""
 		
-		if disp < 0:
-			# Backwards
-			#@FIXME: This is done by trial and error
-			self.assemble_br_medium(disp=disp + 0x200000, cond=cond)	#0x0e)
-		elif (disp < 0b1000000000):
+		
+		#@FIXME: Something is broken here!
+		#@FIXME: For short to work, we have to take address "overflows" into account!
+		#self.put('@FIXME: br with cond=%02x, disp=%d' % (cond, disp))
+		
+		#if disp < 0:
+		#	# Backwards
+		#	#@FIXME: This is done by trial and error
+		#	self.assemble_br_medium(disp=disp + 0x200000, cond=cond)	#0x0e)
+		#elif (disp < 0b1000000000):
+		if ((disp & 1) == 0) and ((disp >= -256) and (disp <= 254)):
 			#self.put_debug('Short')
 			self.assemble_br_short(disp=disp, cond=cond)
 		else:
@@ -1224,7 +1230,7 @@ class CR16B_Assembler:
 			  (0b010 << 13)\
 			| (((disp & 0b111100000) >> 5) << 9)\
 			| (cond << 5)\
-			| ((disp & 0b000011111))
+			| (disp & 0b000011111)	# disp0 must be zero / even
 		)
 	
 	def assemble_br_medium(self, disp, cond=0):
@@ -1241,6 +1247,20 @@ class CR16B_Assembler:
 	#def assemble_bne(self, disp):
 	#	#self.w16(0x4020 + disp)
 	#	self.assemble_br(cond=COND_NE, disp=disp)
+	def assemble_brcondi(self, cond, val1, i, reg, disp5m1):
+		"""Assemble Compare-and-Branch (BEQ0/1i, BNE0/1i)"""
+		
+		self.w16(
+			  (i << 13)\
+			| (0xa << 9)\
+			| (((reg & 0b1000) >> 3) << 8)\
+			| (cond << 7)\
+			| (val1 << 6)\
+			| ((reg & 0b0001) << 5)\
+			| (((disp5m1 & 0b11110) >> 1) << 1)\
+			| 1
+		)
+	
 	
 	def assemble_bal(self, disp21, lnk_pair=REG_ERA):
 		"""Assemble branch and link for Large Memory Model.
@@ -1291,7 +1311,10 @@ class CR16B_Assembler:
 ### Tests
 def assert_assembly(text, bin, pc=0x0000):
 	"""Helper function to check assembly text against asserted binary output"""
-	put('Checking "%06X	%s" =?= %s' % (pc, text, ' '.join([ '%02X' % b for b in bin]) ))
+	
+	
+	#put_debug('Checking "%06X	%s" =?= %s' % (pc, text, ' '.join([ '%02X' % b for b in bin]) ))
+	
 	
 	asm = CR16B_Assembler()
 	#bin2 = asm.assemble(text, pc=pc)
@@ -1483,6 +1506,10 @@ def test_instructions():
 	# Test add/sub with different format qualifiers
 	# Test: 0020FA:	00 00      	0000     	addb    $0, r0
 	assert_assembly('addb    $0, r0', [0x00, 0x00])
+	
+	# Test: 001270:	D1 00 11 00	00D1 0011	addb    $0x11, r6
+	assert_assembly('addb    $0x11, r6', [0xd1, 0x00, 0x11, 0x00])
+	
 	# Test: 03301C:	60 13      	1360     	addcb   $0, r11
 	assert_assembly('addcb   $0, r11', [0x60, 0x13])
 	# Test: 03443C:	01 02      	0201     	addub   $0x1, r0
@@ -1503,6 +1530,8 @@ def test_instructions():
 	# Test: 01DF14:	F8 23      	23F8     	adduw   $-0x8, sp
 	assert_assembly('adduw   $-0x8, sp', [0xf8, 0x23])
 	
+	# Test: 001288:	D1 1E 10 00	1ED1 0010	subb    $0x10, r6
+	assert_assembly('subb    $0x10, r6', [0xd1, 0x1E, 0x10, 0x00])
 	# Test: 002A2A:	02 1E      	1E02     	subb    $0x2, r0
 	assert_assembly('subb    $0x2, r0', [0x02, 0x1E])
 	# Test: 00204A:	A1 3E      	3EA1     	subw    $0x1, r5
@@ -1521,6 +1550,8 @@ def test_instructions():
 	
 	# Test: 0018AE:	F1 1C 10 00	1CF1 0010	orb     $0x10, r7
 	assert_assembly('orb     $0x10, r7', [0xf1, 0x1c, 0x10, 0x00])
+	# Test: 0014CC:	31 1C 80 FF	1C31 FF80	orb     $0x80, r1
+	assert_assembly('orb     $0x80, r1', [0x31, 0x1c, 0x80, 0xff])
 	# Test: 0018B8:	13 7D      	7D13     	orw     r9, r8
 	assert_assembly('orw     r9, r8', [0x13, 0x7d])
 	# Test: 001A68:	01 3D      	3D01     	orw     $0x0001, r8
@@ -1588,20 +1619,22 @@ def test_instructions():
 	## Test: 015946:	1D 14      	141D     	beq0b   r0, 0x01594A
 	##asm.assemble_beq(op=0xe, opext=3, i=I_BYTE, reg=REG_R0, imm4m1=(0x01594A - 0x015946))
 	# Test: 03194A:	09 15      	1509     	beq0b   r8, 0x031952
-	#asm.assemble_brcond(cond=COND_EQ, val1=0, i=I_BYTE, reg=REG_R8, disp5m1=(0x031952 - 0x03194A))
+	#asm.assemble_brcondi(cond=COND_EQ, val1=0, i=I_BYTE, reg=REG_R8, disp5m1=(0x031952 - 0x03194A))
 	assert_assembly('beq0b   r8, 0x031952', [0x09, 0x15], pc=0x03194A)
 	# Test: 031964:	49 15      	1549     	beq1b   r8, 0x03196C
-	#asm.assemble_brcond(cond=COND_EQ, val1=1, i=I_BYTE, reg=REG_R8, disp5m1=(0x03196C - 0x031964))
+	#asm.assemble_brcondi(cond=COND_EQ, val1=1, i=I_BYTE, reg=REG_R8, disp5m1=(0x03196C - 0x031964))
 	assert_assembly('beq1b   r8, 0x03196C', [0x49, 0x15], pc=0x031964)
 	# Test: 015412:	8D 14      	148D     	bne0b   r0, 0x01541E	; back to loop
-	#asm.assemble_brcond(cond=COND_NE, val1=0, i=I_BYTE, reg=REG_R0, disp5m1=(0x1541E - 0x015412))
+	#asm.assemble_brcondi(cond=COND_NE, val1=0, i=I_BYTE, reg=REG_R0, disp5m1=(0x1541E - 0x015412))
 	assert_assembly('bne0b   r0, 0x01541E	; back!', [0x8d, 0x14], pc=0x015412)
 	# Test: 015904:	CB 14      	14CB     	bne1b   r0, 0x01590E
-	#asm.assemble_brcond(cond=COND_NE, val1=1, i=I_BYTE, reg=REG_R0, disp5m1=(0x01590E - 0x015904))
+	#asm.assemble_brcondi(cond=COND_NE, val1=1, i=I_BYTE, reg=REG_R0, disp5m1=(0x01590E - 0x015904))
 	assert_assembly('bne1b   r0, 0x01590E', [0xcb, 0x14], pc=0x015904)
 	#Test: 002256:	89 34      	3489     	bne0w   r0, 0x00225E
 	assert_assembly('bne0w   r0, 0x00225E', [0x89, 0x34], pc=0x002256)
 	
+	# Test: 0014E6:	11 0E 80 FF	0E11 FF80	cmpb    $-0x80, r0
+	assert_assembly('cmpb    $-0x80, r0', [0x11, 0x0e, 0x80, 0xff])
 	# Test: 0014D2:	20 2E      	2E20     	cmpw    $0, r1
 	assert_assembly('cmpw    $0, r1', [0x20, 0x2e], pc=0x0014D2)
 	# Test: 0014D4:	D2 40      	40D2     	bgt     0x0014E6
@@ -1610,8 +1643,8 @@ def test_instructions():
 	assert_assembly('bne     0x0014DC', [0x26, 0x40], pc=0x0014D6)
 	
 	#@FIXME: Wrong output!
-	#### Test: 0014E4:	F8 5E      	5EF8     	ble     0x0014EC
-	###assert_assembly('ble     0x0014EC', [0xf8, 0x5e], pc=0x0014E4)
+	# Test: 0014E4:	F8 5E      	5EF8     	ble     0x0014EC
+	assert_assembly('ble     0x0014EC', [0xf8, 0x5e], pc=0x0014E4)
 	
 	# Test: 001720:	EA 40      	40EA     	ble     0x00172A
 	assert_assembly('ble     0x00172A', [0xea, 0x40], pc=0x001720)
@@ -1620,6 +1653,12 @@ def test_instructions():
 	assert_assembly('bhi     0x00150A', [0x80, 0x42], pc=0x0014EA)
 	# Test: 0014F0:	3A 41      	413A     	bfc     0x00150A
 	assert_assembly('bfc     0x00150A', [0x3a, 0x41], pc=0x0014F0)
+	
+	# Switch-a-roo: So similar, but so different...
+	# Test: 00108E:	64 40      	4064     	bcc     0x001092
+	assert_assembly('bcc     0x001092', [0x64, 0x40], pc=0x00108E)
+	# Test: 001096:	76 5E      	5E76     	bcc     0x0010A0
+	assert_assembly('bcc     0x0010A0', [0x76, 0x5e], pc=0x001096)
 	
 	# Test: 00294E:	30 6E      	6E30     	sne     r8
 	assert_assembly('sne     r8', [0x30, 0x6e])
@@ -1635,7 +1674,7 @@ def test_reassemble():
 	"""Take a known disassembly and try to re-assemble it. Compare against previous binary"""
 	
 	filename = '/z/data/_code/_c/V-Tech/vcxdk.git/tools/cr16b_dasm/ROM_GL8008CX_27-6393-11.asm'
-	put('Loading and re-assembling file "%s"...' % filename)
+	put('Self-test against disassembly file "%s"...' % filename)
 	with open(filename, 'r') as h:
 		data = h.read()
 	

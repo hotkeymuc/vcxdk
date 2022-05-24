@@ -78,10 +78,24 @@ mem(SCREEN_BUFFER + 60*7 + 0) = bin(0,0, 0,0, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*
 */
 
 
-#include "font_console_8x8.h"
-#define FONT_WIDTH 8
-#define FONT_HEIGHT 8
+//#define FONT_FULL_8BIT	// Include all 8-bit ascii characters?
+#ifdef FONT_FULL_8BIT
+	#define FONT_CONSOLE_8X8_FULL_8BIT	// Include all 8-bit ascii characters?
+#endif
 
+#include "font_console_8x8.h"
+
+// Copy font info over
+#define FOND_DATA FONT_CONSOLE_8X8_DATA
+#define FONT_WIDTH FONT_CONSOLE_8X8_WIDTH	// 8
+#define FONT_HEIGHT FONT_CONSOLE_8X8_HEIGHT	// 8
+#define FONT_FIRST FONT_CONSOLE_8X8_FIRST
+#define FONT_LAST FONT_CONSOLE_8X8_LAST
+#define FONT_SIZE FONT_CONSOLE_8X8_SIZE
+#define FONT_COLOR 3	// Color (0=off/white, 1=bright, 2=medium, 3=black)
+
+
+// Draw one glyph of the font
 void screen_draw_glyph(word x, word y, word g) {
 	__far const byte *dp;
 	byte iy;
@@ -89,7 +103,9 @@ void screen_draw_glyph(word x, word y, word g) {
 	word *p;
 	byte d;
 	
-	if (g >= FONT_CONSOLE_8X8_SIZE) return;
+	if (g < FONT_FIRST) return;
+	if (g > FONT_LAST) return;
+	g -= FONT_FIRST;
 	
 	// Source pointer to glyph in ROM
 	/*
@@ -99,7 +115,7 @@ void screen_draw_glyph(word x, word y, word g) {
 	__asm__("storw   r0,8(sp)");
 	*/
 	//dp = CARTRIDGE_ROM_POINTER(&FONT_CONSOLE_8X8[g]);	// Font lives as constant in cartridge ROM
-	dp = &FONT_CONSOLE_8X8[g][0];	// Font lives as constant in cartridge ROM
+	dp = &FOND_DATA[g][0];	// Font lives as constant in cartridge ROM
 	
 	
 	// Destination pointer to screen buffer
@@ -121,7 +137,7 @@ void screen_draw_glyph(word x, word y, word g) {
 		/*
 		// Set as two bytes
 		// Left 4 pixels fit into first byte
-		*p++ = 3 *	// Color (0=off/white, 1=bright, 2=medium, 3=black)
+		*p++ = FONT_COLOR *	// Color (0=off/white, 1=bright, 2=medium, 3=black)
 		(
 			  (d & 0x80) >> 1
 			| (d & 0x40) >> 2
@@ -129,7 +145,7 @@ void screen_draw_glyph(word x, word y, word g) {
 			| (d & 0x10) >> 4
 		);
 		// Right 4 pixels fit into second byte
-		*p++ = 3 *	// Color (0=off/white, 1=bright, 2=medium, 3=black)
+		*p++ = FONT_COLOR *	// Color (0=off/white, 1=bright, 2=medium, 3=black)
 		(
 			  (d & 0x08) << 3
 			| (d & 0x04) << 2
@@ -141,7 +157,7 @@ void screen_draw_glyph(word x, word y, word g) {
 		*/
 		
 		// Set 8 pixels at once using one word at a time
-		*p = 3 *	// Color (0=off/white, 1=bright, 2=medium, 3=black)
+		*p = FONT_COLOR *	// Color (0=off/white, 1=bright, 2=medium, 3=black)
 		(
 			  (d & 0x80) >> 1
 			| (d & 0x40) >> 2

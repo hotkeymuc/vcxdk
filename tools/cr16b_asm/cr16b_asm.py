@@ -297,7 +297,7 @@ class CR16B_Assembler:
 			#self.put('New section "%s" at 0x%06X!' % (name, address))
 			#self.sections[name] = Section(name, address=address)
 			base_address = SECTION_BASE_OFFSETS[name] if name in SECTION_BASE_OFFSETS else 0x000000
-			self.put('New section "%s" at 0x%06X!' % (name, base_address))
+			self.put_debug('New section "%s" at 0x%06X!' % (name, base_address))
 			self.sections[name] = Section(name, base_address=base_address)
 		
 		#self.put_debug('Entering section "%s"...' % name)
@@ -622,9 +622,12 @@ class CR16B_Assembler:
 					#@FIXME: Some mnemonics INTRODUCE a new identifier. Let them handle it and don't force-introduce dummy values!
 					
 					# Handle expression
-					if '+' in w:
+					expression = None
+					if '+' in w: expression = '+'
+					if '-' in w: expression = '-'
+					if expression is not None:
 						# Omit the expression in name
-						label_name = w[:w.index('+')]
+						label_name = w[:w.index(expression)]
 					else:
 						label_name = w
 					
@@ -641,10 +644,15 @@ class CR16B_Assembler:
 						unresolved.append(label_name)
 					
 					# Handle expression afterwards
-					if '+' in w:
-						v = int(w[w.index('+')+1:])
-						self.put_debug('Handling expression (0x%06X + %d)...' % (label_addr, v))
-						label_addr += v
+					if expression is not None:
+						v = int(w[w.index(expression)+1:])
+						self.put_debug('Handling expression (0x%06X %s %d)...' % (label_addr, expression, v))
+						if expression == '+':
+							label_addr += v
+						elif expression == '-':
+							label_addr -= v
+						else:
+							raise SyntaxError('Unsupported expression: "%s"' % w)
 					
 					params.append(label_addr)
 				
@@ -1456,23 +1464,30 @@ if __name__ == '__main__':
 				else:							label_data_str = '%s%s' % (' '.join(['%02X'%b for b in label_data[:MAX_DUMP_SIZE]]), '...' if label_size > MAX_DUMP_SIZE else '')
 				put('\t\t+ %s at ofs 0x%04X (addr: 0x%04X, size: 0x%04X / %d bytes): %s' % (label_name, label_ofs, label_addr, label_size,label_size, label_data_str ))
 		
-		put('ROM Sections:')
+		found = False
 		for name in ROM_SECTIONS:
 			if not name in asm.sections: continue
+			if not found:	# Print header only on demand
+				put('ROM Sections:')
+				found = True
 			show_section_stats(asm.sections[name])
+		if not found: put('(no ROM sections)')
 		
-		put('RAM Sections:')
+		found = False
 		for name in RAM_SECTIONS:
 			if not name in asm.sections: continue
+			if not found:	# Print header only on demand
+				put('RAM Sections:')
+				found = True
 			show_section_stats(asm.sections[name])
+		if not found: put('(no RAM sections)')
 		
-		unknown_found = False
+		found = False
 		for name,section in asm.sections.items():
 			if (name in ROM_SECTIONS) or (name in RAM_SECTIONS): continue
-			if unknown_found == False:
-				# Print header only on demand
+			if not found:	# Print header only on demand
 				put('Unknown Sections:')
-				unknown_found = True
+				found = True
 			show_section_stats(section)
 		
 	
@@ -1488,8 +1503,10 @@ if __name__ == '__main__':
 			h.write(bin)
 			if pad is not None:
 				l = pad - len(bin)
-				put_debug('Padding 0x%06X / %d bytes to fill up 0x%06X / %d bytes' % (l,l, pad,pad))
-				h.write(bytes([0] * l))
-	
+				if l >= 0:
+					put('Padding %d bytes to fill up 0x%06X / %d bytes' % (l, pad,pad))
+					h.write(bytes([0] * l))
+				else:
+					put('Produced data exceeds padding! (%d > %d)' % (len(bin), pad))
 	
 	# EOF

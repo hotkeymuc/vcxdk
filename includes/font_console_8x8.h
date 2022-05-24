@@ -3,8 +3,26 @@
 
 // Font from https://github.com/idispatch/raster-fonts/blob/master/font-8x8.c
 
-#define FONT_CONSOLE_8X8_SIZE 255
-const byte FONT_CONSOLE_8X8[255][8] = {
+//#define FONT_CONSOLE_8X8_FULL_8BIT	// Include all 8-bit ascii characters?
+
+#define FONT_CONSOLE_8X8_WIDTH 8
+#define FONT_CONSOLE_8X8_HEIGHT 8
+
+#ifdef FONT_CONSOLE_8X8_FULL_8BIT
+	#define FONT_CONSOLE_8X8_FIRST 0
+	#define FONT_CONSOLE_8X8_LAST 254
+	//#define FONT_CONSOLE_8X8_SIZE 255
+#else
+	#define FONT_CONSOLE_8X8_FIRST 32
+	#define FONT_CONSOLE_8X8_LAST 127
+	//#define FONT_CONSOLE_8X8_SIZE 96
+#endif
+
+#define FONT_CONSOLE_8X8_SIZE (1+FONT_CONSOLE_8X8_LAST-FONT_CONSOLE_8X8_FIRST)
+
+const byte FONT_CONSOLE_8X8_DATA[FONT_CONSOLE_8X8_SIZE][FONT_CONSOLE_8X8_HEIGHT] = {
+
+#ifdef FONT_CONSOLE_8X8_FULL_8BIT
 	/*
 	 * code=0, hex=0x00, ascii="^@"
 	 */
@@ -452,7 +470,8 @@ const byte FONT_CONSOLE_8X8[255][8] = {
 	0x00,  /* 00000000 */
 	0x00,  /* 00000000 */
 	},
-
+#endif // FONT_CONSOLE_8X8_FULL_8BIT
+	
 	/*
 	 * code=32, hex=0x20, ascii=" "
 	 */
@@ -1797,6 +1816,7 @@ const byte FONT_CONSOLE_8X8[255][8] = {
 	0x00,  /* 00000000 */
 	},
 
+#ifdef FONT_CONSOLE_8X8_FULL_8BIT
 	/*
 	 * code=128, hex=0x80, ascii="!^@"
 	 */
@@ -3589,6 +3609,7 @@ const byte FONT_CONSOLE_8X8[255][8] = {
 	//0x00,  /* 00000000 */
 	//0x00,  /* 00000000 */
 	//}
+#endif // FONT_CONSOLE_8X8_FULL_8BIT
 };
 
 #endif	//__FONT_CONSOLE_8X8_H

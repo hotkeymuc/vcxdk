@@ -297,7 +297,7 @@ void printf_byte_pretty(byte v) {
 
 
 // Internal command call definition
-typedef int (*t_commandCall)(int argc, char *argv[]);
+typedef int (*t_commandCall)(int argc, __far char *argv[]);
 
 
 // Struct for the internal commands
@@ -326,12 +326,12 @@ byte running;
 word lastAddr;	// temp address
 
 // Internal command implementations
-void parse(char *arg);	// Forward declaration to input parser, needed for batch functionality
-int eval(int argc, char *argv[]);	// Forward declaration to input parser, needed for batch functions
+void parse(__far char *arg);	// Forward declaration to input parser, needed for batch functionality
+int eval(int argc, __far char *argv[]);	// Forward declaration to input parser, needed for batch functions
 
 
 
-byte monitor_stricmp(char *cs, __far const char *ct) {
+byte monitor_stricmp(__far char *cs, __far const char *ct) {
 	while ((*cs != 0) && (*ct != 0)) {
 		if (stricmp1(*cs++, *ct++)) return 1;
 	}
@@ -341,7 +341,7 @@ byte monitor_stricmp(char *cs, __far const char *ct) {
 
 
 #ifdef MONITOR_CMD_CLS
-int cmd_cls(int argc, char *argv[]) {
+int cmd_cls(int argc, __far char *argv[]) {
 	(void) argc; (void) argv;
 	
 	clear();
@@ -351,7 +351,7 @@ int cmd_cls(int argc, char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_DUMP
-int cmd_dump(int argc, char *argv[]) {
+int cmd_dump(int argc, __far char *argv[]) {
 	word a;
 	char c;
 	byte l;
@@ -383,7 +383,7 @@ int cmd_dump(int argc, char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_ECHO
-int cmd_echo(int argc, char *argv[]) {
+int cmd_echo(int argc, __far char *argv[]) {
 	int i;
 	
 	for(i = 1; i < argc; i++) {
@@ -396,7 +396,7 @@ int cmd_echo(int argc, char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_EXIT
-int cmd_exit(int argc, char *argv[]) {
+int cmd_exit(int argc, __far char *argv[]) {
 	(void) argc; (void) argv;
 	
 	running = false;
@@ -405,12 +405,12 @@ int cmd_exit(int argc, char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_HELP
-int cmd_help(int argc, char *argv[]);	// Forward declaration, since "help" needs to know all the commands and the commands need to know this function...
+int cmd_help(int argc, __far char *argv[]);	// Forward declaration, since "help" needs to know all the commands and the commands need to know this function...
 // implemented after declaration of COMMANDS[]
 #endif
 
 #ifdef MONITOR_CMD_INTERRUPTS
-int cmd_di(int argc, char *argv[]) {
+int cmd_di(int argc, __far char *argv[]) {
 	(void)argc;
 	(void)argv;
 	
@@ -418,7 +418,7 @@ int cmd_di(int argc, char *argv[]) {
 	
 	return ERR_OK;
 }
-int cmd_ei(int argc, char *argv[]) {
+int cmd_ei(int argc, __far char *argv[]) {
 	(void)argc;
 	(void)argv;
 	
@@ -429,7 +429,7 @@ int cmd_ei(int argc, char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_LOOP
-int cmd_loop(int argc, char *argv[]) {
+int cmd_loop(int argc, __far char *argv[]) {
 	char c;
 	
 	while(1) {
@@ -449,7 +449,7 @@ int cmd_loop(int argc, char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_PAUSE
-int cmd_pause(int argc, char *argv[]) {
+int cmd_pause(int argc, __far char *argv[]) {
 	(void) argc; (void) argv;
 	
 	//printf("Press any key");
@@ -461,7 +461,7 @@ int cmd_pause(int argc, char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_PEEKPOKE
-int cmd_peek(int argc, char *argv[]) {
+int cmd_peek(int argc, __far char *argv[]) {
 	
 	word a;
 	byte v;
@@ -497,17 +497,17 @@ int cmd_peek(int argc, char *argv[]) {
 	return ERR_OK;
 }
 
-int cmd_poke(int argc, char *argv[]) {
+int cmd_poke(int argc, __far char *argv[]) {
 	word a;
 	byte v;
-	byte *b;
+	__far char *b;
 	
 	if (argc < 3) return ERR_MISSING_ARGUMENT;
 	
 	a = hextow(argv[1]);
 	
 	// Allow poking multiple values
-	b = (byte *)argv[2];
+	b = (__far char *)argv[2];
 	do {
 		v = hextob(b);
 		*(byte *)a = v;
@@ -524,9 +524,9 @@ int cmd_poke(int argc, char *argv[]) {
 
 // Keep this declaration in-sync. with the app's startup (e.g. arch/plain/system.h:vgldk_init())
 //typedef int (t_plain_vgldkinit)(t_putchar *, t_getchar *);
-typedef int (t_plain_vgldkinit)(t_putchar *, t_getchar *, int argc, char *argv[]);
+typedef int (t_plain_vgldkinit)(t_putchar *, t_getchar *, int argc, __far char *argv[]);
 
-int cmd_call_int(word addr, int argc, char *argv[]) {
+int cmd_call_int(word addr, int argc, __far char *argv[]) {
 	
 	lastAddr = addr;	// For ASM/C interoperability reasons this must be a global variable, not a value on stack
 	
@@ -567,7 +567,7 @@ int cmd_call_int(word addr, int argc, char *argv[]) {
 }
 
 
-int cmd_call(int argc, char *argv[]) {
+int cmd_call(int argc, __far char *argv[]) {
 	
 	// Determine address, use "defaultAddr" as default
 	if (argc < 2) {
@@ -587,7 +587,7 @@ int cmd_call(int argc, char *argv[]) {
 
 
 #ifdef MONITOR_CMD_VER
-int cmd_ver(int argc, char *argv[]) {
+int cmd_ver(int argc, __far char *argv[]) {
 	(void) argc; (void) argv;
 	
 	//printf("%s\n", VERSION);
@@ -708,7 +708,7 @@ int probe_mem(unsigned int addr) {
 	#define FILEIO_ROOT_FS fs_root
 	#include <fileio.h>
 	
-	int cmd_files_cd(int argc, char *argv[]) {
+	int cmd_files_cd(int argc, __far char *argv[]) {
 		
 		if (argc < 2) {
 			/*
@@ -725,7 +725,7 @@ int probe_mem(unsigned int addr) {
 		return ERR_OK;
 	}
 	
-	int cmd_files_ls(int argc, char *argv[]) {
+	int cmd_files_ls(int argc, __far char *argv[]) {
 		(void) argc; (void) argv;
 		
 		file_DIR *dir;
@@ -746,7 +746,7 @@ int probe_mem(unsigned int addr) {
 		return ERR_OK;
 	}
 	
-	int cmd_files_cat(int argc, char *argv[]) {
+	int cmd_files_cat(int argc, __far char *argv[]) {
 		file_FILE *f;
 		size_t l;
 		char buf[FILES_BUF_SIZE];
@@ -809,7 +809,7 @@ int probe_mem(unsigned int addr) {
 		return (int)((word)pp - addr);
 	}
 	
-	int cmd_files_load(int argc, char *argv[]) {
+	int cmd_files_load(int argc, __far char *argv[]) {
 		
 		if (argc < 2) return ERR_MISSING_ARGUMENT;
 		
@@ -825,7 +825,7 @@ int probe_mem(unsigned int addr) {
 	#endif
 	
 	#ifdef MONITOR_CMD_RUN
-	int cmd_files_run(int argc, char *argv[]) {
+	int cmd_files_run(int argc, __far char *argv[]) {
 		int l;
 		
 		if (argc < 2) return ERR_MISSING_ARGUMENT;
@@ -852,7 +852,7 @@ int probe_mem(unsigned int addr) {
 	
 	//#include "driver/mame.h"
 	/*
-	int cmd_files_iotest(int argc, char *argv[]) {
+	int cmd_files_iotest(int argc, __far char *argv[]) {
 		(void) argc; (void) argv;
 		
 		if (argc < 2) {
@@ -917,7 +917,7 @@ int probe_mem(unsigned int addr) {
 	#endif
 	
 	/*
-	int cmd_serial_test(int argc, char *argv[]) {
+	int cmd_serial_test(int argc, __far char *argv[]) {
 		int c = 0;
 		
 		(void)argc;
@@ -934,7 +934,7 @@ int probe_mem(unsigned int addr) {
 	
 	#ifdef VGLDK_VARIABLE_STDIO
 	// Allow switching STDIO to serial (only available when built with VGLDK_VARIABLE_STDIO)
-	int cmd_serial_io(int argc, char *argv[]) {
+	int cmd_serial_io(int argc, __far char *argv[]) {
 		(void)argc;
 		(void)argv;
 		
@@ -962,7 +962,7 @@ int probe_mem(unsigned int addr) {
 	}
 	#endif
 	
-	int cmd_serial_get(int argc, char *argv[]) {
+	int cmd_serial_get(int argc, __far char *argv[]) {
 		int c;
 		
 		(void)argc;
@@ -979,7 +979,7 @@ int probe_mem(unsigned int addr) {
 		
 		return ERR_OK;
 	}
-	int cmd_serial_gets(int argc, char *argv[]) {
+	int cmd_serial_gets(int argc, __far char *argv[]) {
 		char *buffer;
 		
 		(void)argc;
@@ -991,7 +991,7 @@ int probe_mem(unsigned int addr) {
 		
 		return ERR_OK;
 	}
-	int cmd_serial_put(int argc, char *argv[]) {
+	int cmd_serial_put(int argc, __far char *argv[]) {
 		int i;
 		
 		for(i = 1; i < argc; i++) {
@@ -1080,7 +1080,7 @@ const t_commandEntry COMMANDS[] = {
 
 #ifdef MONITOR_CMD_HELP
 // Actual implementation of "help", since it needs to know the COMMANDS variable
-int cmd_help(int argc, char *argv[]) {
+int cmd_help(int argc, __far char *argv[]) {
 	
 	word i;
 	
@@ -1133,7 +1133,7 @@ void prompt(void) {
 }
 
 // Command handler
-int eval(int argc, char *argv[]) {
+int eval(int argc, __far char *argv[]) {
 	int i;
 	
 	// No input? Continue.
@@ -1171,6 +1171,7 @@ int eval(int argc, char *argv[]) {
 	for(i = 0; i < (sizeof(COMMANDS) / sizeof(t_commandEntry)); i++) {
 		//if (monitor_stricmp(argv[0], (__far char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
 		if (monitor_stricmp(argv[0], (__far const char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
+		//if (monitor_stricmp(argv[0], CARTRIDGE_ROM_POINTER(COMMANDS[i].name) == 0)) {
 			return COMMANDS[i].call(argc, argv);
 		}
 	}
@@ -1189,15 +1190,15 @@ int eval(int argc, char *argv[]) {
 }
 
 
-void parse(char *s) {
+void parse(__far char *s) {
 	// Parse an input string into argv[], including handling of quotes, escape sequences and variables
 	
 	int r;
 	char arg[MAX_INPUT];	// Destination string (slightly modified from original string)
-	char *argv[MAX_ARGS];	// Pointers withing arg
+	__far char *argv[MAX_ARGS];	// Pointers withing arg
 	int argc;
-	char *sc;	// Source pointer
-	char *ac;	// arg pointer
+	__far char *sc;	// Source pointer
+	__far char *ac;	// arg pointer
 	//char *varNameP;	// For parsing variable names
 	//char *varValP;	// For parsing variable names
 	char c;
@@ -1316,7 +1317,7 @@ void parse(char *s) {
 }
 
 
-//int main(int argc, char *argv[]) {
+//int main(int argc, __far char *argv[]) {
 void main(void) {
 	
 	#ifdef MONITOR_SERIAL_AUTOSTART

@@ -8,22 +8,22 @@ A "Hello world" using frame buffer access.
 
 
 #include <vcxdk.h>
-
 //#include <stdio.h>
-
-#include <memory.h>
+//#include <memory.h>
 #include <screen.h>
-#include <keyboard.h>
+//#include <keyboard.h>
 //#include <ui.h>
 
 
 void main(void) {
-	char c;
+	//char c;
 	
 	screen_clear();
 	
 	//draw_pchar(0, 0, CARTRIDGE_ROM_POINTER("Hello VCXDK!"));
-	puts(CARTRIDGE_ROM_POINTER("Hello VCXDK!"));
+	//puts(CARTRIDGE_ROM_POINTER("Hello VCXDK!"));
+	//puts("Hello VCXDK!");
+	screen_printf("Hello VCXDK!");
 	
-	c = getchar();
+	//c = getchar();
 }

@@ -7,7 +7,7 @@ Simple LCD frame buffer access for the VTech Genius Leader 8008 CX
 2022-05-10 Bernhard "HotKey" Slawik
 */
 
-#include "memory.h"	// for CARTRIDGE_ROM_POINTER() for font
+//#include "memory.h"	// for CARTRIDGE_ROM_POINTER() for font
 
 #define SCREEN_WIDTH 240
 #define SCREEN_HEIGHT 144
@@ -16,7 +16,8 @@ Simple LCD frame buffer access for the VTech Genius Leader 8008 CX
 #define VRAM_START 0x3300	// Start of video memory: 0x3300
 #define SCREEN_BUFFER 0x3340	// Start of frame buffer (2bpp): 0x3340
 
-static volatile word screen_x, screen_y;
+static volatile word screen_x = 0;
+static volatile word screen_y = 0;
 
 void screen_clear(void) {
 	int i;
@@ -82,7 +83,7 @@ mem(SCREEN_BUFFER + 60*7 + 0) = bin(0,0, 0,0, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*
 #define FONT_HEIGHT 8
 
 void screen_draw_glyph(word x, word y, word g) {
-	__far byte *dp;
+	__far const byte *dp;
 	byte iy;
 	//unsigned char *p;
 	word *p;
@@ -97,7 +98,8 @@ void screen_draw_glyph(word x, word y, word g) {
 	__asm__("adduw   $0x10, r0");	// ...add the cartridge ROM base address (0x100000)
 	__asm__("storw   r0,8(sp)");
 	*/
-	dp = CARTRIDGE_ROM_POINTER(&FONT_CONSOLE_8X8[g]);	// Font lives as constant in cartridge ROM
+	//dp = CARTRIDGE_ROM_POINTER(&FONT_CONSOLE_8X8[g]);	// Font lives as constant in cartridge ROM
+	dp = &FONT_CONSOLE_8X8[g][0];	// Font lives as constant in cartridge ROM
 	
 	
 	// Destination pointer to screen buffer

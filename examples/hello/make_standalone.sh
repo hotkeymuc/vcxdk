@@ -1,61 +1,27 @@
 #!/bin/bash
-# VCXDK Master Make Script
 
-# Set INPUT_BASENAME if not already set
-if [ -z ${INPUT_BASENAME+x} ]; then
-	INPUT_BASENAME=$1
-fi
+INPUT_BASENAME=hello
+#INPUT_BASENAME=hello_standalone
 INPUT_FILENAME=${INPUT_BASENAME}.c
-S_FILENAME=${INPUT_BASENAME}.s
-O_FILENAME=${INPUT_BASENAME}.o
 OUTPUT_FILENAME=${INPUT_BASENAME}.bin
 
-# Resolve paths
-SOURCE_PATH=$(pwd)
-TOOLS_PATH="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INCLUDES_PATH=$(cd ${TOOLS_PATH}/../includes && pwd)
-INCLUDES_PATH_RELATIVE=$(realpath --relative-to=${SOURCE_PATH} ${INCLUDES_PATH})
-CR16TOOLSET_PATH=${TOOLS_PATH}/CR16toolset
-CR16TOOLSET_PATH_RELATIVE=$(realpath --relative-to=${SOURCE_PATH} ${CR16TOOLSET_PATH})
-CR16TOOLSET_PATH_WINE=${CR16TOOLSET_PATH_RELATIVE//\//\\}
-CR16BASM_PATH=${TOOLS_PATH}/cr16b_asm
-CR16BDASM_PATH=${TOOLS_PATH}/cr16b_dasm
+CR16TOOLSET_PATH=../../tools/CR16toolset
+CR16BASM_PATH=../../tools/cr16b_asm
+INCLUDES_PATH=../../includes
+#HEADER_FILENAME=${INCLUDES_PATH}/cart_header.asm
+HEADER_FILENAME=hello_standalone_header.asm
+BINARY_SIZE=8192
 
-if [ -z ${HEADER_FILENAME+x} ]; then
-	HEADER_FILENAME=${INCLUDES_PATH}/cart_header.asm
-fi
-if [ -z ${BINARY_SIZE+x} ]; then
-	BINARY_SIZE=8192
-fi
-
-echo "VCXDK Make"
-echo "=========="
-echo
-echo "Source path             : ${SOURCE_PATH}"
-echo "Tools path              : ${TOOLS_PATH}"
-echo "CR16 Toolset path       : ${CR16TOOLSET_PATH}"
-echo "CR16 Toolset path (WINE): ${CR16TOOLSET_PATH_WINE}"
-echo "cr16b_asm.py path       : ${CR16BASM_PATH}"
-echo "Includes path           : ${INCLUDES_PATH}"
-echo "Includes path (relative): ${INCLUDES_PATH_RELATIVE}"
-echo "Input file              : ${INPUT_FILENAME}"
-echo "Header file             : ${HEADER_FILENAME}"
-echo "Output file             : ${OUTPUT_FILENAME}"
-echo "Output size             : ${BINARY_SIZE}"
-echo
-
-# Stay in source path
-cd ${SOURCE_PATH}
 
 # Clean
-echo "### Cleaning up..."
+echo Cleaning up...
 [ -e ${INPUT_BASENAME}.err ] && rm ${INPUT_BASENAME}.err
-[ -e ${O_FILENAME} ] && rm ${O_FILENAME}
-[ -e ${S_FILENAME} ] && rm ${S_FILENAME}
+[ -e ${INPUT_BASENAME}.o ] && rm ${INPUT_BASENAME}.o
+[ -e ${INPUT_BASENAME}.s ] && rm ${INPUT_BASENAME}.s
 
 
 # Compile
-echo "### Compiling \"${INPUT_FILENAME}\" to \"${S_FILENAME}\" using crcc..."
+echo Compiling \"${INPUT_FILENAME}\" using crcc...
 
 #	CompactRISC CR16 C Compiler Release 3.1 (revision 5)
 #	Usage: crcc [ [-flag] | [file] | [@argfile]  ] ... 
@@ -135,52 +101,34 @@ echo "### Compiling \"${INPUT_FILENAME}\" to \"${S_FILENAME}\" using crcc..."
 
 # Wine passes exported environment variables over
 # Create a backslash-version of the toolset path
-#export CRDIR=${CR16TOOLSET_PATH//\//\\}
-export CRDIR=${CR16TOOLSET_PATH_WINE}
+export CRDIR=${CR16TOOLSET_PATH//\//\\}
 
 # Call the compiler using Wine
 #wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -Wextra -I${INCLUDES_PATH} -c -S -n ${INPUT_FILENAME}
-wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -Wextra -O -I${INCLUDES_PATH_RELATIVE} -c -S -n ${INPUT_FILENAME}
+#wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -O -DCRCC_OPT -I${INCLUDES_PATH} -c -S -n ${INPUT_FILENAME}
+wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -I${INCLUDES_PATH} -c -S -n ${INPUT_FILENAME}
 
 # Check result, stop if something went wrong
 CRCC_RESULT=$?
 if [ $CRCC_RESULT -ne 0 ]; then
-	echo "Compilation failed. Stopping make."
+	echo Compilation failed. Stopping make.
 	exit $CRCC_RESULT
 fi
-if [ ! -e ${S_FILENAME} ]; then
-	echo "Compiler did not produce an assembly file \"${S_FILENAME}\". Stopping make."
-	exit -1
-fi
+
 
 #echo Disassembling using my own disasm...
 #python3 ../cr16b_dasm/cr16b_dasm.py test.o
 
 
 # Assemble binary
-echo "### Assembling \"${OUTPUT_FILENAME}\" from \"${S_FILENAME}\"..."
+echo Assembling \"${OUTPUT_FILENAME}\"...
 # Turn the generated assembly into a binary file
-#python3 ${CR16BASM_PATH}/cr16b_asm.py --verbose --output ${INPUT_BASENAME}.bin cart_header.asm ${INPUT_BASENAME}.s
+#python3 ${CR16BASM_PATH}/cr16b_asm.py --verbose --stats --output ${INPUT_BASENAME}.bin cart_header.asm ${INPUT_BASENAME}.s
 python3 ${CR16BASM_PATH}/cr16b_asm.py --stats --output ${OUTPUT_FILENAME} --pad ${BINARY_SIZE} ${HEADER_FILENAME} ${INPUT_BASENAME}.s
-
-# Check result, stop if something went wrong
-CR16BASM_RESULT=$?
-if [ $CR16BASM_RESULT -ne 0 ]; then
-	echo "Assembly failed. Stopping make."
-	exit $CR16BASM_RESULT
-fi
-if [ ! -e ${OUTPUT_FILENAME} ]; then
-	echo "Assembler did not produce a binary file \"${OUTPUT_FILENAME}\". Stopping make."
-	exit -2
-fi
 
 
 # Disassemble the result to check
-#python3 ${CR16BDASM_PATH}/cr16b_dasm.py ${OUTPUT_FILENAME}
+#python3 ../../tools/cr16b_dasm/cr16b_dasm.py test.bin
 
 
-# Burn EEPROM
-#echo "### Burning \"${OUTPUT_FILENAME}\"..."
-#minipro -p 'AT28LV64@PLCC32' -w test.bin
-
-echo "### Make finished."
+echo Finished.

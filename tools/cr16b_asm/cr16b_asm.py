@@ -182,14 +182,27 @@ def str_to_num(t):
 
 from collections import OrderedDict
 
+ROM_BASE_OFFSET = 0x100000
 RAM_START = 0xb700	# Default start for all data inside a non-text section
-ROM_SECTIONS = ['text', '.rdata_2', '.frdat_2']	# Order in which to put the ROM sections into file
+ROM_SECTIONS = ['text', '.data_2', '.rdata_2', '.frdat_2']	# Order in which to put the ROM sections into file
 RAM_SECTIONS = ['.bss_1', '.bss_2']
 
 SECTION_DEFAULT_OFFSETS = {
 	'text': 0x000000,
+	'.data_2': 0x000000,
 	'.rdata_2': 0x000000,
 	'.frdat_2': 0x000000,
+	
+	'.bss_1': 0x000000,	#RAM_START,
+	'.bss_2': 0x000000,	#RAM_START,
+}
+
+SECTION_BASE_OFFSETS = {
+	'text': 0x000000,
+	'.data_2': ROM_BASE_OFFSET,
+	'.rdata_2': ROM_BASE_OFFSET,
+	'.frdat_2': ROM_BASE_OFFSET,
+	
 	'.bss_1': RAM_START,
 	'.bss_2': RAM_START,
 }
@@ -227,10 +240,11 @@ class DataStore:
 class Section:
 	"""One section, like text, bss2, rdata_2, ..."""
 	
-	def __init__(self, name, address=0x000000):
+	def __init__(self, name, base_address=0x000000):
 		self.name = name
 		self.store = DataStore()
-		self.address = address
+		self.base_address = base_address	# This is the static offset added to accesses to this section (e.g. 0x100000 for CARTRIDGE ROM)
+		self.relocation_offset = 0	# This is the relocation offset (used to relocate several sections together)
 		self.labels = {}
 	
 	def clear(self):
@@ -240,7 +254,7 @@ class Section:
 		return self.store.ofs
 	
 	def get_address(self):
-		return self.address + self.get_ofs()
+		return self.base_address + self.relocation_offset + self.get_ofs()
 		
 	def register_label(self, name):
 		"""Remember current offset as named label"""
@@ -250,7 +264,7 @@ class Section:
 		return name in self.labels
 	
 	def get_label_address(self, name):
-		return self.address + self.labels[name]
+		return self.base_address + self.relocation_offset + self.labels[name]
 
 
 
@@ -265,7 +279,7 @@ class CR16B_Assembler:
 		self.constants = {}
 		self.sections = {}
 		
-		s = Section('text', address=0x000000)
+		s = Section('text')
 		self.sections['text'] = s
 		self.section = s
 	
@@ -279,9 +293,12 @@ class CR16B_Assembler:
 		if name in self.sections:
 			section = self.sections[name]
 		else:
-			address = SECTION_DEFAULT_OFFSETS[name] if name in SECTION_DEFAULT_OFFSETS else 0x000000
-			self.put('New section "%s" at 0x%06X!' % (name, address))
-			self.sections[name] = Section(name, address=address)
+			#address = SECTION_DEFAULT_OFFSETS[name] if name in SECTION_DEFAULT_OFFSETS else 0x000000
+			#self.put('New section "%s" at 0x%06X!' % (name, address))
+			#self.sections[name] = Section(name, address=address)
+			base_address = SECTION_BASE_OFFSETS[name] if name in SECTION_BASE_OFFSETS else 0x000000
+			self.put('New section "%s" at 0x%06X!' % (name, base_address))
+			self.sections[name] = Section(name, base_address=base_address)
 		
 		#self.put_debug('Entering section "%s"...' % name)
 		self.section = self.sections[name]
@@ -363,6 +380,9 @@ class CR16B_Assembler:
 	def relocate(self, section_names):
 		"""Relocate the sections according to order given as parameter (name list)"""
 		
+		if len(section_names) == 0:
+			return False
+		
 		relocated = False
 		
 		# Search first available section
@@ -373,7 +393,8 @@ class CR16B_Assembler:
 				old_section = asm.sections[name]
 				break
 		if old_section is None:
-			raise Exception('Could not find a starting section!')
+			#put('Could not find a starting section!')
+			return False
 		
 		for name in section_names:	# Only given sections
 			if not name in asm.sections: continue
@@ -387,10 +408,10 @@ class CR16B_Assembler:
 					old_section.store.w8(0x00)
 			
 			# Put new section after previous one
-			address = old_section.address + old_section.get_ofs()
-			if (address != section.address):
-				self.put_debug('Relocated section "%s" after "%s" to address 0x%06X' % (section.name, old_section.name, address))
-				section.address = address
+			relocation_offset = old_section.relocation_offset + old_section.get_ofs()
+			if (relocation_offset != section.relocation_offset):
+				self.put_debug('Relocated section "%s" after "%s" to offset 0x%06X' % (section.name, old_section.name, relocation_offset))
+				section.relocation_offset = relocation_offset
 				relocated = True
 			
 			# Continue
@@ -459,8 +480,9 @@ class CR16B_Assembler:
 			# While testing BRANCH instructions, it is crucial to force a specific value for PC to check displacement encoding
 			# But better shout out what's going on, because it might lead to bad bugs if it happens unnoticed.
 			
-			#self.put_debug('Forcing address of section "%s" from 0x%06X to 0x%06X' % (self.section.name, self.section.get_address(), pc))
-			self.section.address += pc - self.section.get_address()
+			self.put_debug('Forcing address of section "%s" from 0x%06X to 0x%06X' % (self.section.name, self.section.get_address(), pc))
+			self.section.relocation_offset += pc - self.section.get_address()
+			#self.section.base_address += pc - self.section.base_address
 		
 		unresolved = []	#0
 		#pc_start = pc
@@ -1403,16 +1425,36 @@ if __name__ == '__main__':
 		
 		#put('Sections:')
 		#for k,section in asm.sections.items():
-		#	put('\t* %s at 0x%06X: %s' % (section.name, section.address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
+		#	put('\t* %s at 0x%06X: %s' % (section.name, section.base_address, ' '.join(['%02X'%b for b in section.store.get_data()])) )
+		
+		MAX_DUMP_SIZE = 0x20
+		def is_printable(s):
+			for i,c in enumerate(s[:MAX_DUMP_SIZE]):
+				if c in [10,13]: continue	# Potentially printable
+				if (i == len(s)-1) and (c == 0): continue	# C-string terminator
+				
+				if c not in range(32, 127): return False
+			return True
 		
 		def show_section_stats(section):
 			data = section.store.get_data()
 			l = len(data)
-			max_dump_size = 0x20
-			put('\t* %s at 0x%06X (0x%04X / %d bytes): %s%s' % (section.name, section.address, l,l, ' '.join(['%02X'%b for b in data[:max_dump_size]]), '...' if l > max_dump_size else '') )
+			put('\t* %s at address 0x%06X+%d (size: 0x%04X / %d bytes): %s%s' % (section.name, section.base_address, section.relocation_offset, l,l, ' '.join(['%02X'%b for b in data[:MAX_DUMP_SIZE]]), '...' if l > MAX_DUMP_SIZE else '') )
+			#put('\t* %s at address 0x%06X+%d (size: 0x%04X / %d bytes): %s%s' % (section.name, section.base_address, section.relocation_offset, l,l, str(bytes(data[:MAX_DUMP_SIZE])), '...' if l > MAX_DUMP_SIZE else '') )
 			for label_name, label_ofs in section.labels.items():
 				label_addr = section.get_label_address(label_name)
-				put('\t\t+ %s at ofs 0x%04X (addr 0x%04X)' % (label_name, label_ofs, label_addr))
+				label_ofs = section.labels[label_name]
+				label_size = l
+				label_keys = list(section.labels.keys())
+				i = label_keys.index(label_name)
+				if i+1 < len(section.labels):
+					label_size = section.get_label_address(label_keys[i+1]) - label_addr
+				label_data = data[label_ofs:label_ofs+label_size]
+				
+				if label_size == 0:				label_data_str = '--'
+				elif is_printable(label_data):	label_data_str = '%s%s' % (str(bytes(label_data[:MAX_DUMP_SIZE])), '...' if label_size > MAX_DUMP_SIZE else '')
+				else:							label_data_str = '%s%s' % (' '.join(['%02X'%b for b in label_data[:MAX_DUMP_SIZE]]), '...' if label_size > MAX_DUMP_SIZE else '')
+				put('\t\t+ %s at ofs 0x%04X (addr: 0x%04X, size: 0x%04X / %d bytes): %s' % (label_name, label_ofs, label_addr, label_size,label_size, label_data_str ))
 		
 		put('ROM Sections:')
 		for name in ROM_SECTIONS:

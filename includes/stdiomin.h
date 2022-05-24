@@ -26,11 +26,16 @@ void puts(__far char* s) {
 
 //void printf(__far const char *format, ...) { }
 
+#define CURSOR_BLINK
 __far char *gets(__far char *s) {
 	int c;
 	//char *ps;
 	byte l;
+	#ifdef CURSOR_BLINK
 	word timeout;
+	byte blinkframe;
+	blinkframe = 0;
+	#endif
 	
 	//ps = s;
 	l = 0;
@@ -38,20 +43,30 @@ __far char *gets(__far char *s) {
 	
 	while(c != 10) {
 		
-		// if echo
-		screen_draw_glyph(screen_x, screen_y, '_');
-		
-		// Semi-block
-		c = 0xff;
-		timeout = 0x4000;
-		while (key_available() == 0) {
-			timeout--;
-		}
-		if (key_available() > 0)
+		#ifdef CURSOR_BLINK
+			// Blink (non-blocking)
+			screen_draw_glyph(screen_x, screen_y, (blinkframe==0) ? 219 : 176);
+			
+			c = 0xff;
+			timeout = 0x8000;
+			while ((timeout > 0) && (key_available() == 0)) {
+				timeout--;
+			}
+			if (key_available() > 0) {
+				c = getchar();
+				blinkframe = 0;
+				// if echo
+				screen_draw_glyph(screen_x, screen_y, ' ');
+			} else {
+				blinkframe = 1-blinkframe;
+			}
+			
+		#else
+			// Simple (blocking)
+			screen_draw_glyph(screen_x, screen_y, '_');
 			c = getchar();
-		
-		// if echo
-		screen_draw_glyph(screen_x, screen_y, ' ');
+			screen_draw_glyph(screen_x, screen_y, ' ');
+		#endif
 		
 		if ((c != 0xff) && (c != 0x00)) {
 			

@@ -48,7 +48,7 @@ byte parse_hexDigit(byte c) {
 }
 
 
-word hextown(const char *s, byte n) {
+word hextown(__far char *s, byte n) {
 	byte i;
 	word r;
 	char c;
@@ -62,11 +62,11 @@ word hextown(const char *s, byte n) {
 	return r;
 }
 
-byte hextob(const char *s) {
+byte hextob(__far char *s) {
 	return (byte)hextown(s, 2);
 }
 
-word hextow(const char *s) {
+word hextow(__far char *s) {
 	return hextown(s, 4);
 }
 

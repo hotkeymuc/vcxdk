@@ -1,3 +1,4 @@
+![VCXDK Logo](/info/VCXDKLogo.svg)
 # VCXDK
 Unofficial software development kit (SDK) for the VTech "CX" line of learning computers
 

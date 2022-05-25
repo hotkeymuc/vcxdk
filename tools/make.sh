@@ -1,5 +1,17 @@
 #!/bin/bash
 
+echo
+echo "  ###  ######      #####  ######## https://www.github.com/hotkeymuc/vcxdk ####  "
+echo " ####   ######    #####                                                    #### "
+echo " ####    ######  #####   ######### #####  ##### ##########   ####    ####  #### "
+echo " ####     ##### #####  #####       #### ####   #####  ####  ####  ####     #### "
+echo " ####      #########  #####        #######    #####   #### #########       #### "
+echo " ####       #######   #####      #### ####   #####   #### ####   ####      #### "
+echo " ####        #####    ######## #####  ##### ###########  ####     ####     #### "
+echo " ####                                                                      #### "
+echo "  ############################################################################  "
+echo
+
 # VCXDK Master Make Script
 # ========================
 #
@@ -20,6 +32,8 @@
 #		If set: Make CR16B be verbose and show stats
 #
 
+
+
 #echo " ...  ......      .....  ................................................. "
 #echo "....   ......    .....                                                 ...."
 #echo "....   .......  .....  ........... .......... .........  .....  .....  ...."
@@ -30,9 +44,17 @@
 #echo "....                                                                   ...."
 #echo " ......................................................................... "
 
-echo "VCXDK Make"
-echo "=========="
-echo
+# __  _____        ____   __________________________________________________
+#/  |.\    \....../   /../________________________________________________  \
+#|  |..\    \..../   /.. _______  __     ___    _______      ____   ____  |  |
+#|  |...\    \../   /.. /  ____/ |  \.. /  /.../   __  \..../   /._/ __/..|  |
+#|  |....\    V    /../   /.......\  ./  /..../   /..\  \../   /_/  /.....|  |
+#|  |.....\       /..|   |....... >    < ..../   /.../  |./   __  <.......|  |
+#|  |......\     /...\   \___.../  /.\  \.../   /__/   /./   /..\  \......|  |
+#|  |.......\___/.....\_____/./___/.. \__\./_________/../___/....\__\.....|  |
+#|  |_____________________________________________________________________|  |
+# \_________________________________________________________________________/
+
 
 
 # Terminal Colors!
@@ -121,17 +143,17 @@ else
 fi
 
 
-echo "	Input file              : ${INPUT_FILENAME}"
-echo "	Source path             : ${SOURCE_PATH}"
-echo "	Tools path              : ${TOOLS_PATH}"
-echo "	CR16 Toolset path       : ${CR16TOOLSET_PATH}"
-echo "	CR16 Toolset path (WINE): ${CR16TOOLSET_PATH_WINE}"
-echo "	cr16b_asm.py path       : ${CR16BASM_PATH}"
-echo "	Includes path           : ${INCLUDES_PATH}"
-echo "	Includes path (relative): ${INCLUDES_PATH_RELATIVE}"
-echo "	CRT file                : ${CRT_FILENAME}"
-echo "	Output file             : ${OUTPUT_FILENAME}"
-echo "	Output size             : ${BINARY_SIZE}"
+echo "  Input file              : ${INPUT_FILENAME}"
+echo "  Source path             : ${SOURCE_PATH}"
+echo "  Tools path              : ${TOOLS_PATH}"
+echo "  CR16 Toolset path       : ${CR16TOOLSET_PATH}"
+echo "  CR16 Toolset path (WINE): ${CR16TOOLSET_PATH_WINE}"
+echo "  cr16b_asm.py path       : ${CR16BASM_PATH}"
+echo "  Includes path           : ${INCLUDES_PATH}"
+echo "  Includes path (relative): ${INCLUDES_PATH_RELATIVE}"
+echo "  CRT file                : ${CRT_FILENAME}"
+echo "  Output file             : ${OUTPUT_FILENAME}"
+echo "  Output size             : ${BINARY_SIZE}"
 
 echo
 

@@ -203,31 +203,34 @@ Was used to find the keyboard buffer and touchpad state.
 //register int *foovar __asm__("r9");
 
 
-
+// Use all 8bit of ASCII in FONT (requires ~2KB)
+#define FONT_FULL_8BIT
 
 //#include <vcxdk.h>
 //#include <memory.h>
-//#include <screen.h>
 //#include <keyboard.h>
+//#include <screen.h>
 //#include <ui.h>
 
 #include <stdiomin.h>
 #include <stdlibmin.h>	// for atoi()
 #include <stringmin.h>	// for strcmp()
 
+//#define debug(s) ;
+#define debug(s) printf_far(ROM_POINTER(s))
 
 //#define mem(x) *(unsigned char *)(x)
 //#define bin(a,b,c,d,e,f,g,h) (a*128 + b*64 + c*32 + d*16 + e*8 + f*4 + g*2 + h)
 
-__far const char VERSION[] = "Monitor 1.5";
+//__far const char VERSION[] = "Monitor 1.5";
+const char VERSION[] = "Monitor 1.5";
 const word defaultAddr = 0xf800;	// Default address to load stuff to (e.g. apps)
 
 
 // Setup
 #define MAX_ARGS 8
-#define MAX_INPUT 255	//128	//64
+#define MAX_INPUT 32	//255	//128	//64
 char cmd_arg[MAX_INPUT];
-
 
 
 // Features to include (affects how big the binary gets)
@@ -297,16 +300,17 @@ void printf_byte_pretty(byte v) {
 
 
 // Internal command call definition
-typedef int (*t_commandCall)(int argc, __far char *argv[]);
+typedef int (*t_commandCall)(int argc, char *argv[]);
+//typedef __far int (*t_commandCall)(int argc, char *argv[]);
 
 
 // Struct for the internal commands
 typedef struct {
-	__far const char *name;
+	const char *name;
 	t_commandCall call;
 	
 	#ifdef MONITOR_HELP_LONG
-	__far const char *help;
+	const char *help;
 	#endif
 	
 } t_commandEntry;
@@ -326,22 +330,31 @@ byte running;
 word lastAddr;	// temp address
 
 // Internal command implementations
-void parse(__far char *arg);	// Forward declaration to input parser, needed for batch functionality
-int eval(int argc, __far char *argv[]);	// Forward declaration to input parser, needed for batch functions
+//void parse(__far char *arg);	// Forward declaration to input parser, needed for batch functionality
+//int eval(int argc, __far char *argv[]);	// Forward declaration to input parser, needed for batch functions
+void parse(char *arg);	// Forward declaration to input parser, needed for batch functionality
+int eval(int argc, char *argv[]);	// Forward declaration to input parser, needed for batch functions
 
 
 
-byte monitor_stricmp(__far char *cs, __far const char *ct) {
+byte monitor_stricmp(char *cs, __far const char *ct) {
+	
 	while ((*cs != 0) && (*ct != 0)) {
-		if (stricmp1(*cs++, *ct++)) return 1;
+		if (stricmp1(*cs, *ct) != 0) return 1;
+		cs++;
+		ct++;
 	}
-	if (stricmp1(*cs, *ct)) return 1;
+	// Length check (did both strings end the same way?)
+	//if (stricmp1(*cs, *ct) != 0) return 1;
+	if (*cs != *ct) return 1;
+	
+	// Match!
 	return 0;
 }
 
 
 #ifdef MONITOR_CMD_CLS
-int cmd_cls(int argc, __far char *argv[]) {
+int cmd_cls(int argc, char *argv[]) {
 	(void) argc; (void) argv;
 	
 	clear();
@@ -351,7 +364,7 @@ int cmd_cls(int argc, __far char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_DUMP
-int cmd_dump(int argc, __far char *argv[]) {
+int cmd_dump(int argc, char *argv[]) {
 	word a;
 	char c;
 	byte l;
@@ -383,20 +396,20 @@ int cmd_dump(int argc, __far char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_ECHO
-int cmd_echo(int argc, __far char *argv[]) {
+int cmd_echo(int argc, char *argv[]) {
 	int i;
 	
 	for(i = 1; i < argc; i++) {
-		if (i > 1) printf(" ");
+		if (i > 1) putchar(' ');
 		printf(argv[i]);
 	}
-	printf("\n");
+	putchar('\n');
 	return ERR_OK;
 }
 #endif
 
 #ifdef MONITOR_CMD_EXIT
-int cmd_exit(int argc, __far char *argv[]) {
+int cmd_exit(int argc, char *argv[]) {
 	(void) argc; (void) argv;
 	
 	running = false;
@@ -405,12 +418,12 @@ int cmd_exit(int argc, __far char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_HELP
-int cmd_help(int argc, __far char *argv[]);	// Forward declaration, since "help" needs to know all the commands and the commands need to know this function...
+int cmd_help(int argc, char *argv[]);	// Forward declaration, since "help" needs to know all the commands and the commands need to know this function...
 // implemented after declaration of COMMANDS[]
 #endif
 
 #ifdef MONITOR_CMD_INTERRUPTS
-int cmd_di(int argc, __far char *argv[]) {
+int cmd_di(int argc, char *argv[]) {
 	(void)argc;
 	(void)argv;
 	
@@ -418,7 +431,7 @@ int cmd_di(int argc, __far char *argv[]) {
 	
 	return ERR_OK;
 }
-int cmd_ei(int argc, __far char *argv[]) {
+int cmd_ei(int argc, char *argv[]) {
 	(void)argc;
 	(void)argv;
 	
@@ -429,7 +442,7 @@ int cmd_ei(int argc, __far char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_LOOP
-int cmd_loop(int argc, __far char *argv[]) {
+int cmd_loop(int argc, char *argv[]) {
 	char c;
 	
 	while(1) {
@@ -449,10 +462,10 @@ int cmd_loop(int argc, __far char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_PAUSE
-int cmd_pause(int argc, __far char *argv[]) {
+int cmd_pause(int argc, char *argv[]) {
 	(void) argc; (void) argv;
 	
-	//printf("Press any key");
+	//printf_far(ROM_POINTER("Press any key"));
 	//beep();
 	getchar();
 	//clear();
@@ -461,7 +474,7 @@ int cmd_pause(int argc, __far char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_PEEKPOKE
-int cmd_peek(int argc, __far char *argv[]) {
+int cmd_peek(int argc, char *argv[]) {
 	
 	word a;
 	byte v;
@@ -497,17 +510,17 @@ int cmd_peek(int argc, __far char *argv[]) {
 	return ERR_OK;
 }
 
-int cmd_poke(int argc, __far char *argv[]) {
+int cmd_poke(int argc, char *argv[]) {
 	word a;
 	byte v;
-	__far char *b;
+	char *b;
 	
 	if (argc < 3) return ERR_MISSING_ARGUMENT;
 	
 	a = hextow(argv[1]);
 	
 	// Allow poking multiple values
-	b = (__far char *)argv[2];
+	b = argv[2];
 	do {
 		v = hextob(b);
 		*(byte *)a = v;
@@ -524,9 +537,9 @@ int cmd_poke(int argc, __far char *argv[]) {
 
 // Keep this declaration in-sync. with the app's startup (e.g. arch/plain/system.h:vgldk_init())
 //typedef int (t_plain_vgldkinit)(t_putchar *, t_getchar *);
-typedef int (t_plain_vgldkinit)(t_putchar *, t_getchar *, int argc, __far char *argv[]);
+typedef int (t_plain_vgldkinit)(t_putchar *, t_getchar *, int argc, char *argv[]);
 
-int cmd_call_int(word addr, int argc, __far char *argv[]) {
+int cmd_call_int(word addr, int argc, char *argv[]) {
 	
 	lastAddr = addr;	// For ASM/C interoperability reasons this must be a global variable, not a value on stack
 	
@@ -567,7 +580,7 @@ int cmd_call_int(word addr, int argc, __far char *argv[]) {
 }
 
 
-int cmd_call(int argc, __far char *argv[]) {
+int cmd_call(int argc, char *argv[]) {
 	
 	// Determine address, use "defaultAddr" as default
 	if (argc < 2) {
@@ -587,22 +600,22 @@ int cmd_call(int argc, __far char *argv[]) {
 
 
 #ifdef MONITOR_CMD_VER
-int cmd_ver(int argc, __far char *argv[]) {
+int cmd_ver(int argc, char *argv[]) {
 	(void) argc; (void) argv;
 	
 	//printf("%s\n", VERSION);
 	//printf((__far const char *)VERSION);
 	//printf((__far char *)CARTRIDGE_ROM_POINTER((__far void *)&VERSION[0]));
-	puts(CARTRIDGE_ROM_POINTER(VERSION));
+	printf_far(ROM_POINTER((__far void *)&VERSION[0]));
 	
 	// Print the VGLDK_SERIES value
-	#ifdef VGLDK_SERIES
-		// Super-hack to get the value of a DEFINE as a string
-		#define xstr(s) str(s)
-		#define str(s) #s
-		printf(" / " xstr(VGLDK_SERIES) );
-		putchar('\n');
-	#endif
+	//#ifdef VGLDK_SERIES
+	//	// Super-hack to get the value of a DEFINE as a string
+	//	#define xstr(s) str(s)
+	//	#define str(s) #s
+	//	printf(" / " xstr(VGLDK_SERIES) );
+	//#endif
+	putchar('\n');
 	
 	return ERR_OK;
 }
@@ -708,7 +721,7 @@ int probe_mem(unsigned int addr) {
 	#define FILEIO_ROOT_FS fs_root
 	#include <fileio.h>
 	
-	int cmd_files_cd(int argc, __far char *argv[]) {
+	int cmd_files_cd(int argc, char *argv[]) {
 		
 		if (argc < 2) {
 			/*
@@ -725,7 +738,7 @@ int probe_mem(unsigned int addr) {
 		return ERR_OK;
 	}
 	
-	int cmd_files_ls(int argc, __far char *argv[]) {
+	int cmd_files_ls(int argc, char *argv[]) {
 		(void) argc; (void) argv;
 		
 		file_DIR *dir;
@@ -746,7 +759,7 @@ int probe_mem(unsigned int addr) {
 		return ERR_OK;
 	}
 	
-	int cmd_files_cat(int argc, __far char *argv[]) {
+	int cmd_files_cat(int argc, char *argv[]) {
 		file_FILE *f;
 		size_t l;
 		char buf[FILES_BUF_SIZE];
@@ -809,7 +822,7 @@ int probe_mem(unsigned int addr) {
 		return (int)((word)pp - addr);
 	}
 	
-	int cmd_files_load(int argc, __far char *argv[]) {
+	int cmd_files_load(int argc, char *argv[]) {
 		
 		if (argc < 2) return ERR_MISSING_ARGUMENT;
 		
@@ -825,7 +838,7 @@ int probe_mem(unsigned int addr) {
 	#endif
 	
 	#ifdef MONITOR_CMD_RUN
-	int cmd_files_run(int argc, __far char *argv[]) {
+	int cmd_files_run(int argc, char *argv[]) {
 		int l;
 		
 		if (argc < 2) return ERR_MISSING_ARGUMENT;
@@ -852,7 +865,7 @@ int probe_mem(unsigned int addr) {
 	
 	//#include "driver/mame.h"
 	/*
-	int cmd_files_iotest(int argc, __far char *argv[]) {
+	int cmd_files_iotest(int argc, char *argv[]) {
 		(void) argc; (void) argv;
 		
 		if (argc < 2) {
@@ -917,7 +930,7 @@ int probe_mem(unsigned int addr) {
 	#endif
 	
 	/*
-	int cmd_serial_test(int argc, __far char *argv[]) {
+	int cmd_serial_test(int argc, char *argv[]) {
 		int c = 0;
 		
 		(void)argc;
@@ -934,7 +947,7 @@ int probe_mem(unsigned int addr) {
 	
 	#ifdef VGLDK_VARIABLE_STDIO
 	// Allow switching STDIO to serial (only available when built with VGLDK_VARIABLE_STDIO)
-	int cmd_serial_io(int argc, __far char *argv[]) {
+	int cmd_serial_io(int argc, char *argv[]) {
 		(void)argc;
 		(void)argv;
 		
@@ -962,7 +975,7 @@ int probe_mem(unsigned int addr) {
 	}
 	#endif
 	
-	int cmd_serial_get(int argc, __far char *argv[]) {
+	int cmd_serial_get(int argc, char *argv[]) {
 		int c;
 		
 		(void)argc;
@@ -979,7 +992,7 @@ int probe_mem(unsigned int addr) {
 		
 		return ERR_OK;
 	}
-	int cmd_serial_gets(int argc, __far char *argv[]) {
+	int cmd_serial_gets(int argc, char *argv[]) {
 		char *buffer;
 		
 		(void)argc;
@@ -991,7 +1004,7 @@ int probe_mem(unsigned int addr) {
 		
 		return ERR_OK;
 	}
-	int cmd_serial_put(int argc, __far char *argv[]) {
+	int cmd_serial_put(int argc, char *argv[]) {
 		int i;
 		
 		for(i = 1; i < argc; i++) {
@@ -1080,7 +1093,7 @@ const t_commandEntry COMMANDS[] = {
 
 #ifdef MONITOR_CMD_HELP
 // Actual implementation of "help", since it needs to know the COMMANDS variable
-int cmd_help(int argc, __far char *argv[]) {
+int cmd_help(int argc, char *argv[]) {
 	
 	word i;
 	
@@ -1089,12 +1102,12 @@ int cmd_help(int argc, __far char *argv[]) {
 		for(i = 0; i < (sizeof(COMMANDS) / sizeof(t_commandEntry)); i++) {
 			if (i > 0) putchar(' ');	//printf(" ");
 			//printf("%s", COMMANDS[i].name);
-			printf((__far char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0]));
+			printf_far(ROM_POINTER((__far void *)&COMMANDS[i].name[0]));
 			
 			#ifdef MONITOR_HELP_LONG
-			//printf(": ");
-			//printf(COMMANDS[i].help);
-			//putchar('\n');
+			printf_far(ROM_POINTER(": "));
+			printf_far(ROM_POINTER((__far void *)&COMMANDS[i].help[0]));
+			putchar('\n');
 			#endif
 		}
 		putchar('\n');
@@ -1104,12 +1117,12 @@ int cmd_help(int argc, __far char *argv[]) {
 	#ifdef MONITOR_HELP_LONG
 		// Specific help
 		for(i = 0; i < (sizeof(COMMANDS) / sizeof(t_commandEntry)); i++) {
-			if (monitor_stricmp(argv[1], CARTRIDGE_ROM_POINTER(COMMANDS[i].name)) == 0) {
+			if (monitor_stricmp(argv[1], ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
 				//printf("%s: %s\n", COMMANDS[i].name, COMMANDS[i].help);
-				printf((__far char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0]));
+				printf_far(ROM_POINTER((__far void *)&COMMANDS[i].name[0]));
 				putchar(':');
 				putchar(' ');
-				printf((__far char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].help[0]));
+				printf_far(ROM_POINTER((__far void *)&COMMANDS[i].help[0]));
 				putchar('\n');
 				return ERR_OK;
 			}
@@ -1133,20 +1146,24 @@ void prompt(void) {
 }
 
 // Command handler
-int eval(int argc, __far char *argv[]) {
-	int i;
+int eval(int argc, char *argv[]) {
+	word i;
+	__far t_commandEntry *c;
 	
 	// No input? Continue.
 	if (argc == 0) return ERR_OK;
+	if (argv[0] == 0) return ERR_OK;
 	
 	// Parse/run
 	//printf("argc=%d\n", argc);
 	
 	/*
-	printf("argc="); printf_d(argc); printf("\n");
+	// Dump args
+	printf_far(ROM_POINTER("argc=")); printf_x2(argc); putchar("\n");
 	for(i = 0; i < argc; i++) {
 		//printf("args[%d]=\"%s\"\n", i, argv[i]);
-		printf("args["); printf_d(i); printf("]=\""); printf(argv[i]); printf("\"\n");
+		printf_far(ROM_POINTER("args[")); printf_x2(i); printf_far(ROM_POINTER("]=\'"));
+		printf(argv[i]); printf_far(ROM_POINTER("\'\n"));
 	}
 	*/
 	
@@ -1168,11 +1185,25 @@ int eval(int argc, __far char *argv[]) {
 	*/
 	
 	// Check internal commands
+	debug("check...");
 	for(i = 0; i < (sizeof(COMMANDS) / sizeof(t_commandEntry)); i++) {
+		c = (__far t_commandEntry *)&COMMANDS[i];
+		
+		//debug(COMMANDS[i].name); debug("?");
+		debug(c->name); debug("?");
+		//printf_far(c->name); putchar('?');
+		
 		//if (monitor_stricmp(argv[0], (__far char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
-		if (monitor_stricmp(argv[0], (__far const char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
-		//if (monitor_stricmp(argv[0], CARTRIDGE_ROM_POINTER(COMMANDS[i].name) == 0)) {
-			return COMMANDS[i].call(argc, argv);
+		//if (monitor_stricmp(argv[0], (__far const char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
+		//if (monitor_stricmp(argv[0], (__far const char *)ROM_POINTER((__far void *)COMMANDS[i].name)) == 0) {
+		if (monitor_stricmp(argv[0], (__far const char *)ROM_POINTER(c->name)) == 0) {
+			debug("call...");
+			//printf_x4((word)COMMANDS[i].call);
+			printf_x4((word)c->call);
+			
+			//return COMMANDS[i].call(argc, argv);
+			//return ((t_commandCall)(ROM_POINTER(COMMANDS[i].call)))(argc, argv);
+			return ((__far t_commandCall)ROM_POINTER((void *)c->call))(argc, argv);
 		}
 	}
 	
@@ -1190,15 +1221,16 @@ int eval(int argc, __far char *argv[]) {
 }
 
 
-void parse(__far char *s) {
+//void parse(__far char *s) {
+void parse(char *s) {
 	// Parse an input string into argv[], including handling of quotes, escape sequences and variables
 	
 	int r;
 	char arg[MAX_INPUT];	// Destination string (slightly modified from original string)
-	__far char *argv[MAX_ARGS];	// Pointers withing arg
+	char *argv[MAX_ARGS];	// Pointers withing arg
 	int argc;
-	__far char *sc;	// Source pointer
-	__far char *ac;	// arg pointer
+	char *sc;	// Source pointer
+	char *ac;	// arg pointer
 	//char *varNameP;	// For parsing variable names
 	//char *varValP;	// For parsing variable names
 	char c;
@@ -1219,12 +1251,13 @@ void parse(__far char *s) {
 	
 	// Ignore comments - ignore as a whole
 	if (*sc == '#') return;
+	if (*sc == 0) return;
 	
 	ac = &arg[0];
 	
 	argv[0] = ac;
 	c = *sc;
-	if (c != 0x00) argc++;	// There seems to be at least ONE arg
+	if (c != 0) argc++;	// There seems to be at least ONE arg
 	
 	isEscape = 0;
 	isQuote = 0;
@@ -1232,7 +1265,7 @@ void parse(__far char *s) {
 	//varNameP = sc;
 	//varValP = ac;
 	
-	while (c != 0x00) {
+	while (c != 0) {
 		c = *sc;
 		
 		if (isEscape) {
@@ -1255,7 +1288,7 @@ void parse(__far char *s) {
 		} else
 		if (c == ';') {
 			// Execute and start over
-			*ac++ = 0x00;	// Terminate string
+			*ac++ = 0;	// Terminate string
 			
 			// Execute
 			r = eval(argc, &argv[0]);
@@ -1310,15 +1343,17 @@ void parse(__far char *s) {
 	if (r != 0) {
 		//printf("Exit code %d\n", r);
 		//printf("Exit code "); printf_d(r); printf("\n");
-		printf(CARTRIDGE_ROM_POINTER("Exit "));
-		printf(CARTRIDGE_ROM_POINTER("0x")); printf_x4((word)r);
+		printf_far(ROM_POINTER("Exit "));
+		printf_far(ROM_POINTER("0x")); printf_x4((word)r);
 		putchar('\n');
 	}
 }
 
 
-//int main(int argc, __far char *argv[]) {
+//int main(int argc, char *argv[]) {
 void main(void) {
+	//char cmd_arg[MAX_INPUT];
+	//int i;
 	
 	#ifdef MONITOR_SERIAL_AUTOSTART
 	int c;
@@ -1337,82 +1372,94 @@ void main(void) {
 	}
 	*/
 	
-	// Alive?
-	screen_draw_glyph(0,0, (word)'*');
-	
 	clear();
+	
+	// Alive?
+	//screen_draw_glyph(0,0, (word)'*');
+	
 	
 	
 	#ifdef MONITOR_FILES
-	// Mount file systems
-	//drives[0] = &fs_internal;
-	//drives[1] = &fs_parabuddy;
-	
-	// CWD
-	cwd[0] = FILE_PATH_DELIMITER;
-	cwd[1] = 0;
+		// Mount file systems
+		//drives[0] = &fs_internal;
+		//drives[1] = &fs_parabuddy;
+		
+		// CWD
+		cwd[0] = FILE_PATH_DELIMITER;
+		cwd[1] = 0;
 	#endif
 	
 	#ifdef MONITOR_SERIAL
-	#ifdef MONITOR_SERIAL_AUTOSTART
-	//if (serial_isReady()) {
-		// If serial cable is connected: Ask for which I/O to use
-		
-		#ifdef VGLDK_VARIABLE_STDIO
-		printf("Press CR\n");
-		serial_puts("Press CR\n");
-		
-		while(1) {
-			c = serial_getchar_nonblocking();
-			if ((c == 10) || (c == 13)) {
-				printf("Serial\n");
+		#ifdef MONITOR_SERIAL_AUTOSTART
+		//if (serial_isReady()) {
+			// If serial cable is connected: Ask for which I/O to use
+			
+			#ifdef VGLDK_VARIABLE_STDIO
+			printf_far(ROM_POINTER("Press CR\n"));
+			serial_puts_far(ROM_POINTER("Press CR\n"));
+			
+			while(1) {
+				c = serial_getchar_nonblocking();
+				if ((c == 10) || (c == 13)) {
+					printf_far(ROM_POINTER("Serial\n"));
+					cmd_serial_io(0, NULL);
+					break;
+				}
+				c = keyboard_inkey();
+				if ((c == 10) || (c == 13)) {
+					printf_far(ROM_POINTER("Term\n"));
+					break;
+				}
+			}
+			
+			/*
+			printf_far(ROM_POINTER("Switch to serial I/O?"));
+			if (getchar() == 'y') {
+				printf_far(ROM_POINTER("Y\n"));
 				cmd_serial_io(0, NULL);
-				break;
+			} else {
+				printf_far(ROM_POINTER("N\n"));
 			}
-			c = keyboard_inkey();
-			if ((c == 10) || (c == 13)) {
-				printf("Term\n");
-				break;
-			}
-		}
-		
-		/*
-		printf("Switch to serial I/O?");
-		if (getchar() == 'y') {
-			printf("Y\n");
-			cmd_serial_io(0, NULL);
-		} else {
-			printf("N\n");
-		}
-		*/
+			*/
+			#endif
+			
+		//}
 		#endif
-		
-	//}
 	#endif
-	#endif
+	
+	//debug("main");
 	
 	#ifdef MONITOR_CMD_VER
 	// Banner
 	cmd_ver(0, NULL);
 	#endif
 	
+	//for(i = 0; i < 0x1000; i++) {
+	//	printf_x2(key_available());
+	//}
+	
 	// Command line loop
 	running = true;
 	
+	//debug("loop");
 	while(running) {
 		
+		//debug("prompt");
 		// Prompt for input
 		prompt();
+		
+		//debug("gets");
 		gets(cmd_arg);
 		putchar('\n');
 		
-		//putchar('"'); printf(cmd_arg); putchar('"'); printf("\n");
+		//debug("parse");
+		//putchar('"'); printf(cmd_arg); putchar('"'); putchar('\n');
 		parse(cmd_arg);
 		
 	}
 	// Exited...
 	
-	//printf("Bye!");
+	//printf_far(ROM_POINTER("Bye!"));
 	
 	// Off into the abyss...
 }

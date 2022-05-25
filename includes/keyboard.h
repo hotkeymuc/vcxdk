@@ -128,8 +128,7 @@ Info:
 2022-05-10 Bernhard "HotKey" Slawik
 */
 
-#include "vcxdk.h"	// for byte, word
-#include "memory.h"	// for CARTRIDGE_ROM_POINTER()
+#include "vcxdk.h"	// for byte, word, ROM_POINTER()
 
 
 // Addresses for 8008 CX (de) firmware
@@ -218,7 +217,7 @@ const char KEY_MAP[2][6][16] = {
 int scancode_to_char(word scancode, word modifiers) {
 	// Convert given scancode (and mofidiers) to ASCII character
 	
-	__far char *p;
+	__far const char *p;
 	char c = 0;
 	
 	if (scancode >= 0x60) return KEY_NONE;
@@ -229,7 +228,8 @@ int scancode_to_char(word scancode, word modifiers) {
 	__asm__("adduw   $0x10, r0");	// Add the cartridge ROM base address (0x100000)
 	__asm__("storw	r0,4(sp)");
 	*/
-	p = CARTRIDGE_ROM_POINTER(&KEY_MAP);
+	//p = ROM_POINTER(&KEY_MAP);
+	p = (__far const char *)ROM_POINTER(&KEY_MAP);
 	
 	
 	// Use scancode DIRECTLY as absolute index (0x00 - 0x5f)
@@ -272,7 +272,7 @@ int getchar(void) {
 	// while (*(byte *)(KEYBOARD_BUFFER_IN) == *(byte *)(KEYBOARD_BUFFER_OUT)) { }
 	index = *(byte *)(KEYBOARD_BUFFER_OUT);
 	while (*(byte *)KEYBOARD_BUFFER_IN == index) {
-		// Wait for BUFFER_IN to increment
+		// Wait for BUFFER_IN to be different than BUFFER_OUT
 	}
 	
 	// Increment BUFFER_OUT

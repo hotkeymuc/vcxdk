@@ -212,7 +212,7 @@ void draw_pchar(word x, word y, __far char *p) {
 }
 */
 
-void screen_putchar(int c) {
+void screen_putchar(word c) {
 	//int over;
 	
 	if ((c == '\r') || (c == '\n')) {
@@ -245,7 +245,7 @@ void screen_putchar(int c) {
 
 
 //@FIXME: Not real printf. Just a way to output a pchar
-void screen_printf(__far char *s) {
+void screen_printf(char *s) {
 	char c;
 	
 	while(1) {
@@ -254,6 +254,14 @@ void screen_printf(__far char *s) {
 		screen_putchar(c);
 	}
 }
-
+void screen_printf_far(__far char *s) {
+	char c;
+	
+	while(1) {
+		c = *s++;
+		if (c == 0) break;
+		screen_putchar(c);
+	}
+}
 
 #endif

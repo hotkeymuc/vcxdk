@@ -182,7 +182,7 @@ def str_to_num(t):
 
 from collections import OrderedDict
 
-ROM_BASE_OFFSET = 0x100000
+ROM_BASE_OFFSET = 0x0000	#0x100000
 RAM_START = 0xb700	# Default start for all data inside a non-text section
 
 # Order in which to put the ROM sections into file
@@ -193,20 +193,21 @@ ROM_SECTIONS = [
 	'.rdata_1',
 	'.rdata_2',
 	
-	'.data',	# initialized data
-	'.data_1',
-	'.data_2',
-	
 	'.frdat',	# read-only far data
 	'.frdat_1',
 	'.frdat_2'
 	
-	'.fdata',	# initialized far data
 ]
 RAM_SECTIONS = [
+	'.data',	# initialized data
+	'.data_1',
+	'.data_2',
+	
 	'.bss',	# uninitialized data
 	'.bss_1',
 	'.bss_2',
+	
+	'.fdata',	# initialized far data
 	
 	'.fbss',	# uninitialized far data
 	'.fbss_1',
@@ -243,13 +244,14 @@ SECTION_BASE_OFFSETS = {
 	'.rdata': ROM_BASE_OFFSET,
 	'.rdata_1': ROM_BASE_OFFSET,
 	'.rdata_2': ROM_BASE_OFFSET,
-	'.data': ROM_BASE_OFFSET,
-	'.data_1': ROM_BASE_OFFSET,
-	'.data_2': ROM_BASE_OFFSET,
 	'.frdat': ROM_BASE_OFFSET,
 	'.frdat_1': ROM_BASE_OFFSET,
 	'.frdat_2': ROM_BASE_OFFSET,
-	'.fdata': ROM_BASE_OFFSET,
+	
+	'.data': RAM_START,
+	'.data_1': RAM_START,
+	'.data_2': RAM_START,
+	'.fdata': RAM_START,
 	
 	'.bss': RAM_START,
 	'.bss_1': RAM_START,

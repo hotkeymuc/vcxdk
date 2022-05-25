@@ -1,8 +1,6 @@
 #ifndef __STRINGMIN_H
 #define __STRINGMIN_H
 
-//#include <string.h>	// For strcmp
-
 //int strlen(__far const char *c) {
 int strlen(const char *c) {
 	int l;
@@ -14,7 +12,7 @@ int strlen(const char *c) {
 }
 
 
-byte strcmp(__far const char *cs, __far const char *ct) {
+byte strcmp_far(__far const char *cs, __far const char *ct) {
 	while ((*cs != 0) && (*ct != 0)) {
 		if (*cs++ != *ct++) return 1;
 	}
@@ -23,17 +21,48 @@ byte strcmp(__far const char *cs, __far const char *ct) {
 }
 
 byte stricmp1(char a, char b) {
+	//putchar('[');putchar(a);putchar(b);
 	if ((a >= 'a') && (a <= 'z')) a -= ('a' - 'A');
 	if ((b >= 'a') && (b <= 'z')) b -= ('a' - 'A');
-	if (a != b) return 1;
-	return 0;
+	if (a == b) {
+		//putchar('0');putchar(']');
+		return 0;
+	}
+	//putchar('1');putchar(']');
+	return 1;
 }
-byte stricmp(__far const char *cs, __far const char *ct) {
+byte stricmp_far(__far const char *cs, __far const char *ct) {
 	while ((*cs != 0) && (*ct != 0)) {
 		if (stricmp1(*cs++, *ct++)) return 1;
 	}
 	if (stricmp1(*cs, *ct)) return 1;
 	return 0;
 }
+
+
+/*
+//void memcpy(void* dst_addr, const void* src_addr, size_t count) {
+void memcpy_far(__far byte *dst_addr, __far byte *src_addr, word count) {
+	//__far byte *ps;
+	//__far byte *pd;
+	
+	//@TODO: Use Opcode for faster copy!!!
+	//@TODO: Copy 16bits at once
+	//ps = src_addr;
+	//pd = dst_addr;
+	while(count > 0) {
+		*(byte *)dst_addr++ = *(byte *)src_addr++;
+		count --;
+	}
+}
+
+//void memset(void* addr, byte b, size_t count) {
+void memset_far(__far byte *addr, byte b, word count) {
+	while(count > 0) {
+		*addr++ = b;
+		count--;
+	}
+}
+*/
 
 #endif

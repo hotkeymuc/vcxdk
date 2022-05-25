@@ -10,16 +10,30 @@ typedef unsigned short size_t;
 #define true 1
 #define false 0
 
-//#include "memory.h"
-//#include "screen.h"
-//#include "keyboard.h"
-//#include "ui.h"
+//#define CTRL_REG *((volatile short *)0xff00)
+//#define mem(x) *(byte *)(x)
+
 
 /*
-__far void *CARTRIDGE_ROM_POINTER(__far void *p) {
+
+As of CR16C A.5: String and float constants MUST belocated in first 64K of memory space.
+But cartridges are mounted at 0x100000, which is far.
+
+To circumvent this, you can use ROM_POINTER("foo") to convert it into the correct base location.
+This is done by adding 0x10 to the "high" address byte.
+
+Use this e.g. to pass constant strings from ROM to system functions.
+	ROM_POINTER("This is a string in ROM")
+
+*/
+
+
+//#define ROM_POINTER(p) p
+
+__far void *ROM_POINTER(__far void *p) {
 	
-	// This assembly part is highly dependent on the compiler output (and memory access model)!
-	// Check the .s file to see if this hack actually blends in correctly!
+	// This assembly part is highly dependent on the compiler output (and memory access model)
+	// Check the produced .s file to see if this hack actually blends in correctly!
 	
 	#ifdef CRCC_OPT
 		// For "-O" optimization (variables in registers)
@@ -35,7 +49,12 @@ __far void *CARTRIDGE_ROM_POINTER(__far void *p) {
 	
 	// Return it
 	return p;
-*/
+}
+
+//#include "memory.h"
+//#include "screen.h"
+//#include "keyboard.h"
+//#include "ui.h"
 
 
 #endif

@@ -129,9 +129,9 @@ if [ -z ${BINARY_SIZE+x} ]; then
 fi
 
 if [ -z ${CRCC_OPTIMIZE+x} ]; then
-	CRCC_OPTIMIZE=
+	CRCC_ARG_OPTIMIZE=
 else
-	CRCC_OPTIMIZE=-O
+	CRCC_ARG_OPTIMIZE="-O -DCRCC_OPT"
 fi
 
 if [ -z ${CR16BASM_VERBOSE+x} ]; then
@@ -271,7 +271,10 @@ export CRDIR=${CR16TOOLSET_PATH_WINE}
 # Call the compiler using Wine
 #wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -Wextra -I${INCLUDES_PATH} -c -S -n ${INPUT_FILENAME}
 #wine ${CR16TOOLSET_PATH}/crcc.exe -mlarge -Wextra -O -I${INCLUDES_PATH_RELATIVE} -c -S -n ${INPUT_FILENAME}
-CMD="${CRCC_COMMAND} -mlarge -Wextra ${CRCC_OPTIMIZE} -I${INCLUDES_PATH_RELATIVE} -c -S -n ${INPUT_FILENAME}"
+#CMD="${CRCC_COMMAND} -mlarge -Wextra ${CRCC_OPTIMIZE} -I${INCLUDES_PATH_RELATIVE} -c -S -n ${INPUT_FILENAME}"
+CMD="${CRCC_COMMAND} -v -mlarge -mfar2 -Wextra ${CRCC_ARG_OPTIMIZE} -I${INCLUDES_PATH_RELATIVE} -c -S -n ${INPUT_FILENAME}"
+# This calls:  ..\..\tools\CR16toolset\lib\sr16\2951\cc1.exe -mshort -mcr16 -fomit-frame-pointer -quiet -mannotate -mnofpu -O -Wall -Wno-char-subscripts -Wno-main -W -Wshadow -Wconversion -Wstrict-prototypes -Wredundant-decls -Winline -mregrel -version -mfar2 -mlarge -mbiggest-alignment-16 -mbiggest-struct-alignment-16 -pedantic hello.c C:\users\hotkey\Temp\cciaaaaa.i -o hello.s
+
 if [ ${ECHO_COMMANDS} ]; then echo ${CMD}; fi
 ${CMD}
 

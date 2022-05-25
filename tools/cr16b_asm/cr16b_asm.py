@@ -184,27 +184,79 @@ from collections import OrderedDict
 
 ROM_BASE_OFFSET = 0x100000
 RAM_START = 0xb700	# Default start for all data inside a non-text section
-ROM_SECTIONS = ['text', '.data_2', '.rdata_2', '.frdat_2']	# Order in which to put the ROM sections into file
-RAM_SECTIONS = ['.bss_1', '.bss_2']
+
+# Order in which to put the ROM sections into file
+ROM_SECTIONS = [
+	'.text',
+	
+	'.rdata',	# read-only data
+	'.rdata_1',
+	'.rdata_2',
+	
+	'.data',	# initialized data
+	'.data_1',
+	'.data_2',
+	
+	'.frdat',	# read-only far data
+	'.frdat_1',
+	'.frdat_2'
+	
+	'.fdata',	# initialized far data
+]
+RAM_SECTIONS = [
+	'.bss',	# uninitialized data
+	'.bss_1',
+	'.bss_2',
+	
+	'.fbss',	# uninitialized far data
+	'.fbss_1',
+	'.fbss_2'
+]
 
 SECTION_DEFAULT_OFFSETS = {
-	'text': 0x000000,
-	'.data_2': 0x000000,
+	'.text': 0x000000,	# program code
+	'.rdata': 0x000000,	# read-only data
+	'.rdata_1': 0x000000,
 	'.rdata_2': 0x000000,
-	'.frdat_2': 0x000000,
 	
+	'.data': 0x000000,	# initialized data
+	'.data_1': 0x000000,
+	'.data_2': 0x000000,
+	
+	'.bss': 0x000000,	# uninitialized data
 	'.bss_1': 0x000000,	#RAM_START,
 	'.bss_2': 0x000000,	#RAM_START,
+	
+	'.frdat': 0x000000,	# read-only far data
+	'.frdat_1': 0x000000,
+	'.frdat_2': 0x000000,
+	
+	'.fdata': 0x000000,	# initialized far data
+	
+	'.fbss': 0x000000,	# uninitialized far data
+	'.fbss_1': 0x000000,	#RAM_START,
+	'.fbss_2': 0x000000,	#RAM_START,
 }
 
 SECTION_BASE_OFFSETS = {
-	'text': 0x000000,
-	'.data_2': ROM_BASE_OFFSET,
+	'.text': 0x000000,
+	'.rdata': ROM_BASE_OFFSET,
+	'.rdata_1': ROM_BASE_OFFSET,
 	'.rdata_2': ROM_BASE_OFFSET,
+	'.data': ROM_BASE_OFFSET,
+	'.data_1': ROM_BASE_OFFSET,
+	'.data_2': ROM_BASE_OFFSET,
+	'.frdat': ROM_BASE_OFFSET,
+	'.frdat_1': ROM_BASE_OFFSET,
 	'.frdat_2': ROM_BASE_OFFSET,
+	'.fdata': ROM_BASE_OFFSET,
 	
+	'.bss': RAM_START,
 	'.bss_1': RAM_START,
 	'.bss_2': RAM_START,
+	'.fbss': RAM_START,
+	'.fbss_1': RAM_START,
+	'.fbss_2': RAM_START,
 }
 
 
@@ -279,8 +331,8 @@ class CR16B_Assembler:
 		self.constants = {}
 		self.sections = {}
 		
-		s = Section('text')
-		self.sections['text'] = s
+		s = Section('.text')
+		self.sections['.text'] = s
 		self.section = s
 	
 	def put(self, t):
@@ -369,7 +421,7 @@ class CR16B_Assembler:
 		for k,section in self.sections.items():
 			section.store.clear()
 		
-		self.section = self.sections['text']
+		self.section = self.sections['.text']
 		
 		if keep_labels:
 			pass
@@ -562,7 +614,7 @@ class CR16B_Assembler:
 			elif mnem == '.text':
 				
 				#self.put_debug('Changing to section TEXT')
-				self.enter_section('text')
+				self.enter_section('.text')
 				continue
 				
 			elif mnem == '.space':

@@ -86,7 +86,7 @@ mem(SCREEN_BUFFER + 60*7 + 0) = bin(0,0, 0,0, 0,0, 0,0);	mem(SCREEN_BUFFER + 60*
 #include "font_console_8x8.h"
 
 // Copy font info over
-#define FOND_DATA FONT_CONSOLE_8X8_DATA
+#define FONT_DATA FONT_CONSOLE_8X8_DATA
 #define FONT_WIDTH FONT_CONSOLE_8X8_WIDTH	// 8
 #define FONT_HEIGHT FONT_CONSOLE_8X8_HEIGHT	// 8
 #define FONT_FIRST FONT_CONSOLE_8X8_FIRST
@@ -114,8 +114,8 @@ void screen_draw_glyph(word x, word y, word g) {
 	__asm__("adduw   $0x10, r0");	// ...add the cartridge ROM base address (0x100000)
 	__asm__("storw   r0,8(sp)");
 	*/
-	//dp = CARTRIDGE_ROM_POINTER(&FONT_CONSOLE_8X8[g]);	// Font lives as constant in cartridge ROM
-	dp = &FOND_DATA[g][0];	// Font lives as constant in cartridge ROM
+	//dp = &FONT_DATA[g][0];	// Font lives as constant in cartridge ROM
+	dp = ROM_POINTER((__far void *)&FONT_DATA[g][0]);	// Font lives as constant in cartridge ROM
 	
 	
 	// Destination pointer to screen buffer

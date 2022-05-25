@@ -1,6 +1,6 @@
 ![VCXDK Logo](/info/VCXDKLogo.svg)
 # VCXDK
-Unofficial software development kit (SDK) for the VTech "CX" line of learning computers
+Unofficial software development kit for the VTech "CX" line of learning computers
 
 Goal is to have a simple way to compile homebrew ROM cartridges that can be run on any VTech computer of that model line.
 
@@ -27,6 +27,7 @@ Fortunately, there are two starting points:
 
 
 ## History
+* 2022-05-20: CR16B Asm relocation and automatic addressing of constants (hopefully) fixed
 * 2022-05-15: Experimental compiler using LLVM IR text translation. Very hacky.
 * 2022-05-10: Rudimentary STDLIB functions.
 * 2022-05-08: Got LCD frame-buffer access with a custom font.

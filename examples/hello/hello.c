@@ -23,7 +23,9 @@ void main(void) {
 	//draw_pchar(0, 0, CARTRIDGE_ROM_POINTER("Hello VCXDK!"));
 	//puts(CARTRIDGE_ROM_POINTER("Hello VCXDK!"));
 	//puts("Hello VCXDK!");
-	screen_printf("Hello VCXDK!");
+	screen_printf(ROM_POINTER("Hello VCXDK!"));
 	
+	while(true) {
+	}
 	//c = getchar();
 }

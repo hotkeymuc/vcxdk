@@ -358,8 +358,8 @@ class CR16B_Assembler:
 		self.section = self.sections[name]
 	
 	def register_label(self, name):
-		if self.section.has_label(name):
-			self.put_debug('Current section "%s" already knows label "%s"' % (self.section.name, name))
+		#if self.section.has_label(name):
+		#	self.put_debug('Current section "%s" already knows label "%s"' % (self.section.name, name))
 		
 		self.section.register_label(name)
 	
@@ -399,7 +399,7 @@ class CR16B_Assembler:
 		"""Pad to given alignment"""
 		al = self.align if a is None else a
 		if (self.section.get_ofs() % al) != 0:
-			put_debug('Padding...')
+			#self.put_debug('Padding...')
 			while (self.section.get_ofs() % al) != 0:
 				self.w8(0x00)
 	
@@ -460,6 +460,7 @@ class CR16B_Assembler:
 				self.put_debug('Padding section "%s" (current size: 0x%06X) for relocation...' % (old_section.name, old_section.get_ofs()))
 				while (old_section.get_ofs() % self.align > 0):
 					old_section.store.w8(0x00)
+				#relocated = True
 			
 			# Put new section after previous one
 			relocation_offset = old_section.relocation_offset + old_section.get_ofs()
@@ -621,7 +622,7 @@ class CR16B_Assembler:
 				
 			elif mnem == '.space':
 				#@TODO: Reserver space in current section
-				self.put_debug('Reserve %d bytes in section' % int(words[1]))
+				#self.put_debug('Reserve %d bytes in section' % int(words[1]))
 				self.pad(int(words[1]))
 				continue
 			
@@ -693,7 +694,7 @@ class CR16B_Assembler:
 					else:
 						#label_addr = 0x1fffff	# Assume far address
 						label_addr = pc + 0x10	# Assume short branch
-						self.put_debug('(Yet) unknown label "%s" at line #%d, pc=0x%06X. Using dummy 0x%06X' % (label_name, line_num, pc, label_addr))
+						#self.put_debug('(Yet) unknown label "%s" at line #%d, pc=0x%06X. Using dummy 0x%06X' % (label_name, line_num, pc, label_addr))
 						
 						unresolved.append(label_name)
 					
@@ -708,6 +709,7 @@ class CR16B_Assembler:
 						else:
 							raise SyntaxError('Unsupported expression: "%s"' % w)
 					
+					#self.put_debug('"%s" resolved to 0x%06X' % (w, label_addr))
 					params.append(label_addr)
 				
 				elif (w[:1] == '$') and (w[1:] in self.labels):	# Accept "$.something"

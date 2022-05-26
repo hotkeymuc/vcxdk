@@ -250,14 +250,14 @@ char cmd_arg[MAX_INPUT];
 
 
 #define MONITOR_CMD_CLS
-//#define MONITOR_CMD_DUMP
+#define MONITOR_CMD_DUMP
 //#define MONITOR_CMD_ECHO
 #define MONITOR_CMD_EXIT
 #define MONITOR_CMD_HELP	// Even without MONITOR_HELP_LONG, the HELP command can list all commands
 //#define MONITOR_CMD_INTERRUPTS
 //#define MONITOR_CMD_LOOP
 #define MONITOR_CMD_PEEKPOKE	// Required for uploading via serial
-//#define MONITOR_CMD_CALL
+#define MONITOR_CMD_CALL
 //#define MONITOR_CMD_PAUSE
 #define MONITOR_CMD_VER	// ~54 bytes
 //#define MONITOR_CMD_LOAD	// Requires MONITOR_FILES
@@ -327,7 +327,7 @@ typedef struct {
 
 // Shell state
 byte running;
-word lastAddr;	// temp address
+
 
 // Internal command implementations
 //void parse(__far char *arg);	// Forward declaration to input parser, needed for batch functionality
@@ -364,6 +364,90 @@ int cmd_cls(int argc, char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_DUMP
+
+// Some memory dump helpers
+#ifndef HEX_DUMP_WIDTH
+	#define HEX_DUMP_WIDTH 4
+#endif
+void dump(word a, byte len) {
+	byte i;
+	byte b;
+	byte *o;
+	byte l;
+	byte lLine;
+	
+	//clear();
+	//12345678901234567890
+	//AAAAhh hh hh hh ....
+	//AAAA hh hh hh hh....
+	//AAAA hhhhhhhh ....
+	
+	l = 0;
+	while (l < len) {
+		//printf("%04X|", a);
+		printf_x4(a); putchar('|');
+		
+		lLine = l;
+		o = (byte *)a;
+		for (i = 0; i < HEX_DUMP_WIDTH; i++) {
+			if (l < len) {
+				b = *o;
+				//printf("%02X", b);
+				printf_x2(b);
+			} else {
+				printf("  ");
+			}
+			l++;
+			o++;
+		}
+		putchar('|');
+		l = lLine;
+		o = (byte *)a;
+		for (i = 0; i < HEX_DUMP_WIDTH; i++) {
+			if (l < len) {
+				b = *o;
+				if (b < 0x20)	putchar('.');
+				else			putchar(b);
+			} else putchar(' ');
+			l++;
+			o++;
+		}
+		a += HEX_DUMP_WIDTH;
+		putchar('\n');
+	}
+	
+	/*
+	// AAAAbbbbbbbbbbbbbbbb
+	// hh hh hh hh hh hh hh
+	//  hh hh hh hh hh hh h
+	// h hh hh
+	printf("%04X", a);
+	o = (byte *)a;
+	for(i = 0; i < len; i++) {
+		b = *o;
+		//printf("%02X", b);
+		if (b < 0x20)
+			putchar('.');
+		else
+			putchar(b);
+		o++;
+	}
+	
+	
+	if (len != 16) printf("\n");
+	
+	o = (byte *)a;
+	for(i = 0; i < len; i++) {
+		b = *o;
+		//printf("%02X ", b);
+		printf("%02X", b);
+		o++;
+	}
+	printf("\n");
+	*/
+}
+
+
 int cmd_dump(int argc, char *argv[]) {
 	word a;
 	char c;
@@ -534,49 +618,14 @@ int cmd_poke(int argc, char *argv[]) {
 #endif
 
 #ifdef MONITOR_CMD_CALL
+word lastAddr;	// temp address for calling stuff
 
 // Keep this declaration in-sync. with the app's startup (e.g. arch/plain/system.h:vgldk_init())
 //typedef int (t_plain_vgldkinit)(t_putchar *, t_getchar *);
-typedef int (t_plain_vgldkinit)(t_putchar *, t_getchar *, int argc, char *argv[]);
+//typedef int (t_plain_vgldkinit)(t_putchar *, t_getchar *, int argc, char *argv[]);
 
 int cmd_call_int(word addr, int argc, char *argv[]) {
-	
-	lastAddr = addr;	// For ASM/C interoperability reasons this must be a global variable, not a value on stack
-	
-	#ifdef VGLDK_VARIABLE_STDIO
-		// Just call it and let the compiler/linker take care of the stack
-		//return (*(t_plain_vgldkinit *)lastAddr)(p_stdout_putchar, p_stdin_getchar);
-		return (*(t_plain_vgldkinit *)lastAddr)(p_stdout_putchar, p_stdin_getchar, argc, argv);
-		
-		/*
-		// Push STDIO pointers to stack
-		// Apps with plain architecture will get those as parameters.
-		// Others can just ignore them (but will mess up the stack on return)
-		__asm
-			ld	hl, (_p_stdout_putchar)
-			push	hl
-			ld	hl, (_p_stdin_getchar)
-			push	hl
-			// argc
-			// argv
-		__endasm;
-		*/
-	#else
-	// Define this function as __naked to keep the stack (i.e. argc and argv)
-	//@TODO: Push residual arguments on stack (argc-2, argv[2:])
-	__asm
-		ld	hl, (_lastAddr)
-		
-		; Trickery: Use "call" to call a label that does not return. That way the "jp" magically becomes a "call"!
-		call	_call_encap	; Call but do not ret there, so PC+3 gets on stack!
-		jp	_call_end		; The "jp" below should return to this instruction
-		_call_encap:
-			jp	(hl)	; This actually becomes a fake "call"
-			; Do not ret! This is intentionally left blank
-		_call_end:
-	__endasm;
-	return ERR_OK;
-	#endif
+	return ((t_commandCall)CODE_POINTER((__far void *)addr))(argc, argv);
 }
 
 
@@ -601,6 +650,7 @@ int cmd_call(int argc, char *argv[]) {
 
 #ifdef MONITOR_CMD_VER
 int cmd_ver(int argc, char *argv[]) {
+	int i;
 	(void) argc; (void) argv;
 	
 	//printf("%s\n", VERSION);
@@ -616,6 +666,16 @@ int cmd_ver(int argc, char *argv[]) {
 	//	printf(" / " xstr(VGLDK_SERIES) );
 	//#endif
 	putchar('\n');
+	
+	
+	// Show in which code segment we are located
+	#ifndef CRCC_OPT
+		printf_far(ROM_POINTER("RA="));	i = 1234;	__asm__("storw	ra,4(sp)");	printf_x4(i);
+		printf_far(ROM_POINTER(",ERA="));	i = 1234;	__asm__("storw	era,4(sp)");	printf_x4(i);
+		printf_far(ROM_POINTER(",SP="));	i = 1234;	__asm__("storw	sp,4(sp)");	printf_x4(i);
+		//printf_far(ROM_POINTER(",PC="));	i = 1234;	__asm__("storw	pc,4(sp)");	printf_x4(i);
+		putchar('\n');
+	#endif
 	
 	return ERR_OK;
 }
@@ -1094,19 +1154,25 @@ const t_commandEntry COMMANDS[] = {
 #ifdef MONITOR_CMD_HELP
 // Actual implementation of "help", since it needs to know the COMMANDS variable
 int cmd_help(int argc, char *argv[]) {
-	
 	word i;
+	t_commandEntry *c;
+	__far t_commandEntry *cf;
+	
 	
 	if (argc < 2) {
 		// List all commands
 		for(i = 0; i < (sizeof(COMMANDS) / sizeof(t_commandEntry)); i++) {
+			
+			c = (t_commandEntry *)&COMMANDS[i];
+			cf = (__far t_commandEntry *)ROM_POINTER(c);
+			
 			if (i > 0) putchar(' ');	//printf(" ");
 			//printf("%s", COMMANDS[i].name);
-			printf_far(ROM_POINTER((__far void *)&COMMANDS[i].name[0]));
+			printf_far(ROM_POINTER((__far void *)&cf->name[0]));
 			
 			#ifdef MONITOR_HELP_LONG
 			printf_far(ROM_POINTER(": "));
-			printf_far(ROM_POINTER((__far void *)&COMMANDS[i].help[0]));
+			printf_far(ROM_POINTER((__far void *)&cf->help[0]));
 			putchar('\n');
 			#endif
 		}
@@ -1117,12 +1183,20 @@ int cmd_help(int argc, char *argv[]) {
 	#ifdef MONITOR_HELP_LONG
 		// Specific help
 		for(i = 0; i < (sizeof(COMMANDS) / sizeof(t_commandEntry)); i++) {
-			if (monitor_stricmp(argv[1], ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
+			c = (t_commandEntry *)&COMMANDS[i];
+			cf = (__far t_commandEntry *)ROM_POINTER(c);
+			
+			//if (monitor_stricmp(argv[1], ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
+			if (monitor_stricmp(argv[1], (__far const char *)ROM_POINTER((__far void *)&cf->name[0])) == 0) {
 				//printf("%s: %s\n", COMMANDS[i].name, COMMANDS[i].help);
-				printf_far(ROM_POINTER((__far void *)&COMMANDS[i].name[0]));
+				//printf_far(ROM_POINTER((__far void *)&COMMANDS[i].name[0]));
+				//printf_far(ROM_POINTER(&cf->name[0]));
+				printf_far(ROM_POINTER((__far void *)&cf->name[0]));
 				putchar(':');
 				putchar(' ');
-				printf_far(ROM_POINTER((__far void *)&COMMANDS[i].help[0]));
+				//printf_far(ROM_POINTER((__far void *)&COMMANDS[i].help[0]));
+				//printf_far(ROM_POINTER(&cf->help[0]));
+				printf_far(ROM_POINTER((__far void *)&cf->help[0]));
 				putchar('\n');
 				return ERR_OK;
 			}
@@ -1148,14 +1222,14 @@ void prompt(void) {
 // Command handler
 int eval(int argc, char *argv[]) {
 	word i;
-	__far t_commandEntry *c;
+	
+	t_commandEntry *c;
+	__far t_commandEntry *cf;
+	//t_commandCall *cc;
 	
 	// No input? Continue.
 	if (argc == 0) return ERR_OK;
 	if (argv[0] == 0) return ERR_OK;
-	
-	// Parse/run
-	//printf("argc=%d\n", argc);
 	
 	/*
 	// Dump args
@@ -1184,26 +1258,29 @@ int eval(int argc, char *argv[]) {
 	}
 	*/
 	
-	// Check internal commands
-	debug("check...");
+	// Check commands
+	//debug("check... COMMANDS="); printf_x4((word)&COMMANDS); debug(" -- ");
+	
+	// RA=0x08
+	//debug("RA=");	i = 1234;	__asm__("storw	ra,4(sp)");	printf_x4(i);
+	//debug(",ERA=");	i = 1234;	__asm__("storw	era,4(sp)");	printf_x4(i);
+	//debug(" -- ");
+	
 	for(i = 0; i < (sizeof(COMMANDS) / sizeof(t_commandEntry)); i++) {
-		c = (__far t_commandEntry *)&COMMANDS[i];
+		c = (t_commandEntry *)&COMMANDS[i];
+		//printf_x2(i); putchar(':'); printf_x4((word)c); putchar('=');
 		
-		//debug(COMMANDS[i].name); debug("?");
-		debug(c->name); debug("?");
-		//printf_far(c->name); putchar('?');
+		cf = (__far t_commandEntry *)ROM_POINTER(c);
+		//debug(&cf->name[0]);
 		
-		//if (monitor_stricmp(argv[0], (__far char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
-		//if (monitor_stricmp(argv[0], (__far const char *)CARTRIDGE_ROM_POINTER((__far void *)&COMMANDS[i].name[0])) == 0) {
 		//if (monitor_stricmp(argv[0], (__far const char *)ROM_POINTER((__far void *)COMMANDS[i].name)) == 0) {
-		if (monitor_stricmp(argv[0], (__far const char *)ROM_POINTER(c->name)) == 0) {
-			debug("call...");
-			//printf_x4((word)COMMANDS[i].call);
-			printf_x4((word)c->call);
+		if (monitor_stricmp(argv[0], (__far const char *)ROM_POINTER((__far void *)&cf->name[0])) == 0) {
+			//debug("call 0x"); printf_x4((word)cf->call); debug("...");
 			
+			// Call uses "JAL", so the addresses must be transformed (at least: halved)
 			//return COMMANDS[i].call(argc, argv);
-			//return ((t_commandCall)(ROM_POINTER(COMMANDS[i].call)))(argc, argv);
-			return ((__far t_commandCall)ROM_POINTER((void *)c->call))(argc, argv);
+			//return cf->call(argc, argv);
+			return ((t_commandCall)CODE_POINTER((__far void *)cf->call))(argc, argv);
 		}
 	}
 	

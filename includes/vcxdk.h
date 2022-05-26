@@ -39,11 +39,13 @@ __far void *ROM_POINTER(__far void *p) {
 		// For "-O" optimization (variables in registers)
 		//__asm__("adduw   $0x10, r1");	// Add the cartridge ROM base address (0x100000)
 		__asm__("orw   $0x10, r1");	// Add the cartridge ROM base address (0x100000)
+		//__asm__("movw   $0x10, r1");	// Set the cartridge ROM base address (0x100000)
 		// r1 is already the return value
 	#else
 		// For no optimization (variables on heap)
 		//__asm__("adduw   $0x10, r3");	// Add the cartridge ROM base address (0x100000)
 		__asm__("orw   $0x10, r3");	// Add the cartridge ROM base address (0x100000)
+		//__asm__("movw   $0x10, r3");	// Set the cartridge ROM base address (0x100000)
 		__asm__("storw	r3,2(sp)");	// Store it back to local variable
 	#endif
 	
@@ -51,6 +53,33 @@ __far void *ROM_POINTER(__far void *p) {
 	return p;
 }
 
+__far void *CODE_POINTER(__far void *p) {
+	// This returns a ROM address ready to JAL/JUMP to
+	// The address must be right-shifted by one (halved)
+	
+	// This assembly part is highly dependent on the compiler output (and memory access model)
+	// Check the produced .s file to see if this hack actually blends in correctly!
+	
+	#ifdef CRCC_OPT
+		// For "-O" optimization (variables in registers)
+		//__asm__("adduw   $0x08, r1");	// Add half of the cartridge ROM base address (0x080000)
+		//__asm__("orw   $0x08, r1");	// Add half of the cartridge ROM base address (0x080000)
+		__asm__("movw   $0x08, r1");	// Set half of the cartridge ROM base address (0x080000)
+		__asm__("lshw	$-1,r0");	// Prepare for JAL
+		// r1 is already the return value
+	#else
+		// For no optimization (variables on heap)
+		//__asm__("adduw   $0x08, r3");	// Add half of the cartridge ROM base address (0x080000)
+		//__asm__("orw   $0x08, r3");	// Add half of the cartridge ROM base address (0x080000)
+		__asm__("movw   $0x08, r3");	// Set half of the cartridge ROM base address (0x080000)
+		__asm__("lshw	$-1,r2");	// Prepare for JAL
+		__asm__("storw	r3,2(sp)");	// Store it back to local variable
+		__asm__("storw	r2,0(sp)");	// Store it back to local variable
+	#endif
+	
+	// Return it
+	return p;
+}
 //#include "memory.h"
 //#include "screen.h"
 //#include "keyboard.h"
